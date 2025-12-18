@@ -180,7 +180,7 @@ This enables:
 ### Step 1: Clone Repository
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/nyc311-intelligence-platform.git
+git clone https://github.com/udaybjoshi/nyc311-intelligence-platform.git
 cd nyc311-intelligence-platform
 ```
 
