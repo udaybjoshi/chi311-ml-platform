@@ -1,4 +1,4 @@
-# 🏙️ Chicago 311 Service Request Intelligence Platform
+# Chicago 311 Service Request Intelligence Platform
 
 > **A Production-Grade ML Portfolio Project** demonstrating end-to-end machine learning engineering on Databricks Free Edition with Lakeflow Declarative Pipelines, SCD Type 2 history tracking, and MLflow.
 
@@ -138,22 +138,24 @@ See [docs/PORTFOLIO_FRAMEWORK.md](docs/PORTFOLIO_FRAMEWORK.md) for detailed alig
 
 ### SCD Type 2: Why It Matters
 
-311 service requests **change over time** (Open → In Progress → Closed). SCD Type 2 preserves this history:
+311 service requests **change over time** (Open → Completed or Open → Canceled). SCD Type 2 preserves this history:
 
 ```
 ┌────────────┬──────────────┬─────────────────────┬─────────────────────┐
-│ sr_number │ status       │ __START_AT          │ __END_AT            │
+│ sr_number  │ status       │ __START_AT          │ __END_AT            │
 ├────────────┼──────────────┼─────────────────────┼─────────────────────┤
 │ SR12345    │ Open         │ 2024-12-01 09:00:00 │ 2024-12-05 14:00:00 │
-│ SR12345    │ In Progress  │ 2024-12-05 14:00:00 │ 2024-12-18 10:00:00 │
-│ SR12345    │ Closed       │ 2024-12-18 10:00:00 │ NULL                │
+│ SR12345    │ Completed    │ 2024-12-05 14:00:00 │ NULL                │
 └────────────┴──────────────┴─────────────────────┴─────────────────────┘
 ```
+
+> **Note**: Chicago 311 uses only 3 status values: **Open**, **Completed**, **Canceled** (one 'l'). 
+> Most requests (82%) close instantly. The simplified status model means fewer SCD2 versions per request (~1.2 avg).
 
 This enables:
 - ✅ **Time-in-Status Analysis**: "How long do noise complaints stay open?"
 - ✅ **Point-in-Time Queries**: "What was the status on December 10th?"
-- ✅ **Lifecycle Analytics**: "What's the typical path from Open to Closed?"
+- ✅ **Lifecycle Analytics**: "What's the typical path from Open to Completed?"
 
 ### Technology Stack
 
@@ -182,8 +184,8 @@ This enables:
 ### Step 1: Clone Repository
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/nyc311-intelligence-platform.git
-cd nyc311-intelligence-platform
+git clone https://github.com/udaybjoshi/chi311-intelligence-platform.git
+cd chi311-intelligence-platform
 ```
 
 ### Step 2: Set Up Databricks Free Edition
@@ -201,14 +203,14 @@ cd nyc311-intelligence-platform
 # Option B: Use Databricks CLI
 pip install databricks-cli
 databricks configure --token
-databricks workspace import_dir ./notebooks /Workspace/Users/YOUR_EMAIL/nyc311
+databricks workspace import_dir ./notebooks /Workspace/Users/YOUR_EMAIL/chi311
 ```
 
 ### Step 4: Create Lakeflow Pipeline
 
 1. Navigate to **Workflows** → **Lakeflow Declarative Pipelines**
 2. Click **Create Pipeline**
-3. Point to `pipelines/nyc311_scd2_pipeline.sql`
+3. Point to `pipelines/chi311_scd2_pipeline.sql`
 4. Configure: **Serverless**, **Development mode**
 5. Run the pipeline
 
@@ -245,10 +247,40 @@ streamlit run dashboard.py
 
 **See:** [docs/DATA_SOURCING.md](docs/DATA_SOURCING.md)
 
-- **Source**: Chicago Open Data Portal (Socrata API)
-- **Endpoint**: `https://data.cityofnewyork.us/resource/erm2-nwe9.json`
-- **Volume**: ~8,000-12,000 requests/day
+- **Source**: Chicago Data Portal (Socrata API)
+- **Endpoint**: `https://data.cityofchicago.org/resource/v6vf-nfxy.json`
+- **Volume**: ~5,000 requests/day (all) / ~3,000/day (service requests only)
 - **Collection**: Daily incremental loads
+
+#### Key Findings from Data Exploration
+
+| Finding | Value | Implication |
+|---------|-------|-------------|
+| **Info Calls** | 40% of volume | "311 INFORMATION ONLY CALL" - exclude for demand forecasting |
+| **Service Requests** | ~3,000/day | True service demand after filtering info calls |
+| **Status Values** | Open, Completed, Canceled | Only 3 values (note: "Canceled" with one 'l') |
+| **Completion Rate** | 83.7% | High efficiency - most requests close quickly |
+| **Instant Closures** | 82% | Resolve in 0 hours (info calls + same-day service) |
+| **Weekend Drop** | 35-40% | Strong weekly seasonality for Prophet |
+| **Peak Hours** | 10am-3pm | Daily seasonality pattern |
+| **Ward 28 Dominance** | 39% of requests | Due to info calls being assigned there |
+
+#### Data Quality Summary
+
+| Field | Null Rate | Threshold |
+|-------|-----------|-----------|
+| sr_number, created_date, sr_type, status | 0.0% | Critical - must be non-null |
+| ward, latitude, longitude | 0.2% | mostly=0.99 |
+| zip_code | 13.1% | mostly=0.85 |
+| closed_date | 15.3% | Expected for open requests |
+
+#### Forecasting Baseline
+
+| Metric | All Requests | Service Only |
+|--------|--------------|--------------|
+| Daily Mean | 5,000 | 3,001 |
+| Daily Std | 1,290 | 925 |
+| Anomaly Threshold (mean + 2σ) | 7,580 | 4,851 |
 
 ### 3. Data Storage (Medallion + SCD2)
 
@@ -354,10 +386,10 @@ anomaly_score = (actual_count - forecast_upper_bound) / forecast_upper_bound
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
-nyc311-intelligence-platform/
+chi311-intelligence-platform/
 │
 ├── README.md                           # You are here
 ├── requirements.txt                    # Python dependencies
@@ -399,7 +431,7 @@ nyc311-intelligence-platform/
 │       ├── __init__.py
 │       ├── ingestion/
 │       │   ├── __init__.py
-│       │   └── api_client.py           # Chicago Open Data API client
+│       │   └── api_client.py           # Chicago Data Portal API client
 │       ├── features/
 │       │   ├── __init__.py
 │       │   └── transformers.py         # Feature engineering functions
@@ -453,7 +485,7 @@ nyc311-intelligence-platform/
 
 | Metric | Description | Target |
 |--------|-------------|--------|
-| **SCD2 Version Rate** | Avg versions per request | 1.5-3.0 |
+| **SCD2 Version Rate** | Avg versions per request | 1.2-1.5 |
 | **Pipeline Latency** | Bronze to Gold processing time | <30 min |
 | **Data Freshness** | Hours since latest record | <24 hours |
 
@@ -492,9 +524,7 @@ Based on the ML portfolio framework, these resources helped build this project:
 
 ---
 
-## License
+## 📄 License
 
 MIT License - see [LICENSE](LICENSE) for details.
-
----
 
