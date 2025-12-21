@@ -1,22 +1,22 @@
 # Databricks notebook source
 # MAGIC %md
 # MAGIC # Chicago 311 Service Request Intelligence - Setup & Exploration
-# MAGIC 
+# MAGIC
 # MAGIC **Purpose**: Initial environment setup and exploratory data analysis to inform data quality rules and pipeline design.
-# MAGIC 
+# MAGIC
 # MAGIC **ML Portfolio Framework**: Component 1 - Problem Framing & Metrics
-# MAGIC 
+# MAGIC
 # MAGIC ## Why This Notebook First?
-# MAGIC 
+# MAGIC
 # MAGIC Before writing any pipeline code or data quality rules, we need to understand:
 # MAGIC 1. **What does the raw data look like?** - Schema, types, sample values
 # MAGIC 2. **What are the data quality issues?** - Nulls, invalid values, duplicates
 # MAGIC 3. **What are the temporal patterns?** - Seasonality for forecasting
 # MAGIC 4. **How do status changes work?** - Critical for SCD Type 2 design
 # MAGIC 5. **What thresholds should we set?** - Informs Great Expectations rules
-# MAGIC 
+# MAGIC
 # MAGIC ## Outputs of This Notebook
-# MAGIC 
+# MAGIC
 # MAGIC | Output | Used By |
 # MAGIC |--------|---------|
 # MAGIC | Null rate analysis | Great Expectations `mostly` thresholds |
@@ -33,7 +33,7 @@
 # COMMAND ----------
 
 # Install required packages (uncomment on first run)
-# %pip install requests pandas plotly
+%pip install requests pandas plotly
 
 # COMMAND ----------
 
@@ -54,9 +54,9 @@ print(f"Setup complete. Timestamp: {datetime.now().isoformat()}")
 
 # MAGIC %md
 # MAGIC ## 2. Data Source Configuration
-# MAGIC 
+# MAGIC
 # MAGIC **Chicago Data Portal - 311 Service Requests**
-# MAGIC 
+# MAGIC
 # MAGIC | Property | Value |
 # MAGIC |----------|-------|
 # MAGIC | API Endpoint | `https://data.cityofchicago.org/resource/v6vf-nfxy.json` |
@@ -130,7 +130,7 @@ else:
 
 # MAGIC %md
 # MAGIC ## 4. Schema Analysis
-# MAGIC 
+# MAGIC
 # MAGIC Understanding the schema is critical for:
 # MAGIC - Defining Bronze layer expectations
 # MAGIC - Identifying required vs optional fields
@@ -145,23 +145,36 @@ print("=" * 60)
 
 schema_info = []
 for col in raw_df.columns:
+    # Handle columns with unhashable types (dicts, lists)
+    try:
+        unique_count = raw_df[col].nunique()
+    except TypeError:
+        unique_count = -1  # Use -1 to indicate nested/unhashable
+    
+    try:
+        sample_val = str(raw_df[col].dropna().iloc[0])[:50] if raw_df[col].notna().any() else "N/A"
+    except:
+        sample_val = "N/A"
+    
     schema_info.append({
         "column": col,
         "dtype": str(raw_df[col].dtype),
-        "non_null": raw_df[col].notna().sum(),
+        "non_null": int(raw_df[col].notna().sum()),
         "null_pct": f"{raw_df[col].isna().mean():.1%}",
-        "unique": raw_df[col].nunique(),
-        "sample": str(raw_df[col].dropna().iloc[0])[:50] if raw_df[col].notna().any() else "N/A"
+        "unique": unique_count,
+        "sample": sample_val
     })
 
 schema_df = pd.DataFrame(schema_info)
-display(schema_df)
+
+# Use print() instead of display() to avoid Arrow conversion issues
+print(schema_df.to_string())
 
 # COMMAND ----------
 
 # MAGIC %md
 # MAGIC ### Key Fields for Pipeline
-# MAGIC 
+# MAGIC
 # MAGIC Based on our use case (forecasting + SCD2 lifecycle tracking), these are the critical fields:
 
 # COMMAND ----------
@@ -196,14 +209,14 @@ if missing:
 
 # MAGIC %md
 # MAGIC ## 5. Data Quality Assessment
-# MAGIC 
+# MAGIC
 # MAGIC This analysis directly informs our Great Expectations rules.
 
 # COMMAND ----------
 
 # MAGIC %md
 # MAGIC ### 5.1 Null Rate Analysis
-# MAGIC 
+# MAGIC
 # MAGIC **Output**: `mostly` thresholds for `expect_column_values_to_not_be_null`
 
 # COMMAND ----------
@@ -235,7 +248,7 @@ display(null_df)
 
 # MAGIC %md
 # MAGIC ### 5.2 Valid Value Sets
-# MAGIC 
+# MAGIC
 # MAGIC **Output**: `value_set` for `expect_column_values_to_be_in_set`
 
 # COMMAND ----------
@@ -265,7 +278,7 @@ for field in categorical_fields:
 
 # MAGIC %md
 # MAGIC ### 5.3 Ward Values (Critical for Silver Layer)
-# MAGIC 
+# MAGIC
 # MAGIC Ward is the geographic dimension (equivalent to NYC borough):
 
 # COMMAND ----------
@@ -289,7 +302,7 @@ if 'ward' in raw_df.columns:
 
 # MAGIC %md
 # MAGIC ### 5.4 Coordinate Validation
-# MAGIC 
+# MAGIC
 # MAGIC **Output**: `min_value`/`max_value` for `expect_column_values_to_be_between`
 
 # COMMAND ----------
@@ -337,7 +350,7 @@ if 'latitude' in raw_df.columns and 'longitude' in raw_df.columns:
 
 # MAGIC %md
 # MAGIC ### 5.5 Uniqueness Check
-# MAGIC 
+# MAGIC
 # MAGIC **Output**: Validates `expect_column_values_to_be_unique` for `sr_number`
 
 # COMMAND ----------
@@ -366,7 +379,7 @@ if 'sr_number' in raw_df.columns:
 
 # MAGIC %md
 # MAGIC ## 6. Status Field Analysis (Critical for SCD2)
-# MAGIC 
+# MAGIC
 # MAGIC Understanding status values and transitions is essential for SCD Type 2 implementation.
 
 # COMMAND ----------
@@ -397,7 +410,7 @@ if 'status' in raw_df.columns:
 
 # MAGIC %md
 # MAGIC ### 6.1 Status Change Detection Fields
-# MAGIC 
+# MAGIC
 # MAGIC For SCD2 incremental loading, we need to identify WHICH fields indicate a status change:
 
 # COMMAND ----------
@@ -432,7 +445,7 @@ print("    - closed_date > timestamp (recently closed)")
 
 # MAGIC %md
 # MAGIC ### 6.2 Resolution Time Analysis (Lifecycle Analytics)
-# MAGIC 
+# MAGIC
 # MAGIC This analysis previews the kind of insights SCD2 will enable:
 
 # COMMAND ----------
@@ -495,7 +508,7 @@ if 'resolution_hours' in valid_resolution.columns and len(valid_resolution) > 0:
 
 # MAGIC %md
 # MAGIC ## 7. Temporal Patterns (Forecasting Inputs)
-# MAGIC 
+# MAGIC
 # MAGIC Understanding seasonality patterns informs Prophet configuration.
 
 # COMMAND ----------
@@ -582,6 +595,18 @@ fig.show()
 
 # COMMAND ----------
 
+# Re-analyze patterns WITHOUT info calls
+service_df = raw_df[raw_df['sr_type'] != '311 INFORMATION ONLY CALL']
+print(f"Service requests only: {len(service_df):,}")
+
+# Daily volume (service only)
+service_daily = service_df.groupby('date').size().reset_index(name='count')
+print(f"\nDaily service volume statistics:")
+print(f"  Mean: {service_daily['count'].mean():.0f}")
+print(f"  Std: {service_daily['count'].std():.0f}")
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 8. Geographic Distribution
 
@@ -630,6 +655,17 @@ if 'ward' in raw_df.columns:
 
 # COMMAND ----------
 
+# Investigate Ward 28 dominance
+print("Ward 28 SR Type breakdown:")
+print(raw_df[raw_df['ward'] == '28']['sr_type'].value_counts().head(10))
+
+print("\nWard 28 vs Others - SR Type comparison:")
+ward_28_types = set(raw_df[raw_df['ward'] == '28']['sr_type'].unique())
+other_types = set(raw_df[raw_df['ward'] != '28']['sr_type'].unique())
+print(f"Types unique to Ward 28: {ward_28_types - other_types}")
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 9. Service Request Type Analysis
 
@@ -657,7 +693,7 @@ if 'sr_type' in raw_df.columns:
 
 # MAGIC %md
 # MAGIC ## 10. Key Findings Summary
-# MAGIC 
+# MAGIC
 # MAGIC ### Data Quality Findings → Great Expectations Configuration
 
 # COMMAND ----------
@@ -782,7 +818,7 @@ exploration_summary = {
 
 summary_df = spark.createDataFrame(pd.DataFrame(exploration_summary))
 
-# Uncomment to save to Unity Catalog
+# Uncomment after creating schema: main.chi311
 # summary_df.write.format("delta").mode("overwrite").saveAsTable("main.chi311.exploration_summary")
 
 display(summary_df)
@@ -791,7 +827,7 @@ display(summary_df)
 
 # MAGIC %md
 # MAGIC ## 12. Next Steps
-# MAGIC 
+# MAGIC
 # MAGIC | Step | Notebook | Purpose |
 # MAGIC |------|----------|---------|
 # MAGIC | 1 | `01_data_quality_checks.py` | Implement Great Expectations suites based on findings |
@@ -800,9 +836,9 @@ display(summary_df)
 # MAGIC | 4 | `03_model_experimentation.py` | Train Prophet with identified seasonality |
 # MAGIC | 5 | `04_ml_forecasting.py` | Production model training with MLflow |
 # MAGIC | 6 | `05_anomaly_detection.py` | Detect anomalies using thresholds |
-# MAGIC 
+# MAGIC
 # MAGIC ### Key Decisions Made:
-# MAGIC 
+# MAGIC
 # MAGIC 1. **Great Expectations thresholds** derived from actual null rates
 # MAGIC 2. **Ward validation** rules defined for Silver layer
 # MAGIC 3. **SCD2 change detection** uses `created_date`, `last_modified_date`, `closed_date`
@@ -814,7 +850,7 @@ display(summary_df)
 # MAGIC %md
 # MAGIC ---
 # MAGIC **Document History**
-# MAGIC 
+# MAGIC
 # MAGIC | Version | Date | Changes |
 # MAGIC |---------|------|---------|
 # MAGIC | 1.0 | 2024-12-20 | Initial exploration with Chicago 311 data |
