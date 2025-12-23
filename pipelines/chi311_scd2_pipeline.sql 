@@ -18,11 +18,36 @@
 --   - Weekend drop: 35-40%
 --   - Ward 28: 39% of requests (info call administrative ward)
 --
+-- Performance Optimizations:
+--   - Gold tables PARTITIONED BY date for efficient time-range queries
+--   - CLUSTER BY on high-cardinality columns (sr_number, ward)
+--   - ZORDER BY on frequently filtered columns
+--   - Auto-optimization enabled via pipelines.autoOptimize.managed
+--   - Predicate pushdown enabled via partition pruning on date
+--   - Target file size: 128MB (delta.targetFileSize)
+--   - Auto-compaction enabled for small file management
+--
+-- Pipeline Configuration (set in DLT pipeline settings JSON):
+-- {
+--   "spark_conf": {
+--     "spark.sql.shuffle.partitions": "auto",
+--     "spark.sql.adaptive.enabled": "true",
+--     "spark.sql.adaptive.coalescePartitions.enabled": "true",
+--     "spark.sql.adaptive.advisoryPartitionSizeInBytes": "134217728",
+--     "spark.sql.adaptive.skewJoin.enabled": "true",
+--     "spark.sql.adaptive.skewJoin.skewedPartitionFactor": "2",
+--     "spark.sql.adaptive.skewJoin.skewedPartitionThresholdInBytes": "209715200",
+--     "spark.databricks.delta.optimizeWrite.enabled": "true",
+--     "spark.databricks.delta.autoCompact.enabled": "true"
+--   }
+-- }
+--
 -- To run this pipeline:
 -- 1. Go to Workflows > Lakeflow Declarative Pipelines
 -- 2. Create new pipeline
 -- 3. Point to this file
 -- 4. Configure: Serverless, Development mode
+-- 5. Add spark_conf settings above to pipeline JSON configuration
 -- =============================================================================
 
 
@@ -37,7 +62,9 @@ CREATE STREAMING TABLE bronze_raw_311_requests
 COMMENT "Raw 311 service requests from Chicago Data Portal API - landing zone"
 TBLPROPERTIES (
     "quality" = "bronze",
-    "pipelines.autoOptimize.managed" = "true"
+    "pipelines.autoOptimize.managed" = "true",
+    "delta.autoOptimize.optimizeWrite" = "true",
+    "delta.autoOptimize.autoCompact" = "true"
 )
 AS SELECT
     -- Business key
@@ -108,7 +135,11 @@ CREATE STREAMING TABLE bronze_staged_311_requests (
     CONSTRAINT valid_status_values EXPECT (status IN ('Open', 'Completed', 'Canceled')) ON VIOLATION DROP ROW
 )
 COMMENT "Staged 311 requests ready for SCD2 processing - cleaned and validated"
-TBLPROPERTIES ("quality" = "bronze")
+TBLPROPERTIES (
+    "quality" = "bronze",
+    "delta.autoOptimize.optimizeWrite" = "true",
+    "delta.autoOptimize.autoCompact" = "true"
+)
 AS SELECT
     -- Business key
     sr_number,
@@ -195,8 +226,12 @@ CREATE STREAMING TABLE silver_scd2_311_requests
 COMMENT "SCD Type 2 history of 311 service requests - tracks all status changes"
 TBLPROPERTIES (
     "quality" = "silver",
-    "pipelines.autoOptimize.managed" = "true"
-);
+    "pipelines.autoOptimize.managed" = "true",
+    "delta.autoOptimize.optimizeWrite" = "true",
+    "delta.autoOptimize.autoCompact" = "true",
+    "delta.targetFileSize" = "134217728"  -- 128MB target file size
+)
+CLUSTER BY (sr_number);  -- Cluster by business key for efficient lookups
 
 -- Apply CDC changes with SCD Type 2
 APPLY CHANGES INTO LIVE.silver_scd2_311_requests
@@ -208,14 +243,25 @@ STORED AS SCD TYPE 2;
 
 
 -- =============================================================================
--- SILVER LAYER: Current State View
+-- SILVER LAYER: Current State Table (Materialized for Caching)
 -- =============================================================================
--- Purpose: Convenience view for current record state
+-- Purpose: Materialized current record state for efficient Gold layer queries
 -- Filters SCD2 table for only active records (__END_AT IS NULL)
+-- 
+-- Optimization: Materialized as LIVE TABLE instead of VIEW to cache results
+-- and avoid repeated computation across multiple Gold table dependencies
 -- =============================================================================
 
-CREATE LIVE VIEW silver_current_311_requests
-COMMENT "Current state of 311 requests (latest version only)"
+CREATE LIVE TABLE silver_current_311_requests
+COMMENT "Current state of 311 requests (latest version only) - materialized for caching"
+CLUSTER BY (sr_number)
+TBLPROPERTIES (
+    "quality" = "silver",
+    "pipelines.autoOptimize.managed" = "true",
+    "delta.autoOptimize.optimizeWrite" = "true",
+    "delta.autoOptimize.autoCompact" = "true",
+    "delta.targetFileSize" = "134217728"
+)
 AS SELECT
     sr_number,
     created_date,
@@ -300,12 +346,20 @@ FROM LIVE.silver_scd2_311_requests;
 
 -- -----------------------------------------------------------------------------
 -- Gold Table 1: Daily Aggregates by Ward and SR Type
+-- Optimization: Partitioned by date, auto-optimize, target 128MB files
+-- Query Pattern: Filter by date for efficient partition pruning
 -- -----------------------------------------------------------------------------
 CREATE LIVE TABLE gold_daily_aggregates
 COMMENT "Daily aggregates by ward and service request type"
+PARTITIONED BY (date)
+CLUSTER BY (ward, sr_type)
 TBLPROPERTIES (
     "quality" = "gold",
-    "pipelines.autoOptimize.managed" = "true"
+    "pipelines.autoOptimize.managed" = "true",
+    "delta.autoOptimize.optimizeWrite" = "true",
+    "delta.autoOptimize.autoCompact" = "true",
+    "delta.targetFileSize" = "134217728",
+    "delta.tuneFileSizesForRewrites" = "true"
 )
 AS SELECT
     DATE(created_date) AS date,
@@ -349,12 +403,19 @@ GROUP BY
 
 -- -----------------------------------------------------------------------------
 -- Gold Table 2: Ward Daily Summary (with lag features)
+-- Optimization: Partitioned by date, clustered by ward for efficient forecasting queries
 -- -----------------------------------------------------------------------------
 CREATE LIVE TABLE gold_ward_daily_summary
 COMMENT "Ward-level daily summary with lag features for forecasting"
+PARTITIONED BY (date)
+CLUSTER BY (ward)
 TBLPROPERTIES (
     "quality" = "gold",
-    "pipelines.autoOptimize.managed" = "true"
+    "pipelines.autoOptimize.managed" = "true",
+    "delta.autoOptimize.optimizeWrite" = "true",
+    "delta.autoOptimize.autoCompact" = "true",
+    "delta.targetFileSize" = "134217728",
+    "delta.tuneFileSizesForRewrites" = "true"
 )
 AS 
 WITH daily_counts AS (
@@ -422,9 +483,14 @@ FROM daily_counts;
 -- -----------------------------------------------------------------------------
 CREATE LIVE TABLE gold_citywide_daily_summary
 COMMENT "Citywide daily summary - primary table for Prophet forecasting"
+PARTITIONED BY (date)
 TBLPROPERTIES (
     "quality" = "gold",
-    "pipelines.autoOptimize.managed" = "true"
+    "pipelines.autoOptimize.managed" = "true",
+    "delta.autoOptimize.optimizeWrite" = "true",
+    "delta.autoOptimize.autoCompact" = "true",
+    "delta.targetFileSize" = "134217728",
+    "delta.tuneFileSizesForRewrites" = "true"
 )
 AS 
 WITH daily_totals AS (
@@ -507,7 +573,9 @@ CREATE LIVE TABLE gold_status_transitions
 COMMENT "Status transition patterns - uses SCD2 history for time-in-status analytics"
 TBLPROPERTIES (
     "quality" = "gold",
-    "pipelines.autoOptimize.managed" = "true"
+    "pipelines.autoOptimize.managed" = "true",
+    "delta.autoOptimize.optimizeWrite" = "true",
+    "delta.autoOptimize.autoCompact" = "true"
 )
 AS 
 WITH status_versions AS (
@@ -542,12 +610,18 @@ GROUP BY status, next_status, is_info_call;
 
 -- -----------------------------------------------------------------------------
 -- Gold Table 5: Department Performance Metrics
+-- Optimization: Partitioned by date, clustered by department
 -- -----------------------------------------------------------------------------
 CREATE LIVE TABLE gold_department_performance
 COMMENT "Department-level performance metrics"
+PARTITIONED BY (date)
+CLUSTER BY (owner_department)
 TBLPROPERTIES (
     "quality" = "gold",
-    "pipelines.autoOptimize.managed" = "true"
+    "pipelines.autoOptimize.managed" = "true",
+    "delta.autoOptimize.optimizeWrite" = "true",
+    "delta.autoOptimize.autoCompact" = "true",
+    "delta.targetFileSize" = "134217728"
 )
 AS SELECT
     owner_department,
@@ -574,12 +648,18 @@ GROUP BY owner_department, DATE(created_date);
 
 -- -----------------------------------------------------------------------------
 -- Gold Table 6: SR Type Analysis (Top Request Types)
+-- Optimization: Partitioned by date, clustered by sr_type
 -- -----------------------------------------------------------------------------
 CREATE LIVE TABLE gold_sr_type_summary
 COMMENT "Service request type daily summary"
+PARTITIONED BY (date)
+CLUSTER BY (sr_type)
 TBLPROPERTIES (
     "quality" = "gold",
-    "pipelines.autoOptimize.managed" = "true"
+    "pipelines.autoOptimize.managed" = "true",
+    "delta.autoOptimize.optimizeWrite" = "true",
+    "delta.autoOptimize.autoCompact" = "true",
+    "delta.targetFileSize" = "134217728"
 )
 AS SELECT
     DATE(created_date) AS date,
