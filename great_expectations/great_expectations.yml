@@ -1,0 +1,190 @@
+# =============================================================================
+# Great Expectations Configuration - Chicago 311 Intelligence Platform
+# =============================================================================
+#
+# This file configures Great Expectations for data quality validation
+# across the Medallion Architecture (Bronze → Silver → Gold)
+#
+# Key Findings from Exploration (00_setup_exploration.py):
+#   - Status values: Open, Completed, Canceled (one 'l')
+#   - Info calls: 40% of volume ("311 INFORMATION ONLY CALL")
+#   - Null rates: Most fields <1%, closed_date ~15%
+#   - Coordinates: Chicago bounds (41.6-42.1 lat, -87.95 to -87.5 lon)
+#   - Wards: 1-50 (numeric)
+#
+# Usage:
+#   - Databricks Serverless: Use chi311_pandas datasource
+#   - Databricks Classic: Use chi311_spark datasource
+#   - Local Development: Use chi311_pandas datasource
+#
+# =============================================================================
+
+config_version: 3.0
+
+# =============================================================================
+# DATASOURCES
+# =============================================================================
+datasources:
+  # ---------------------------------------------------------------------------
+  # Pandas Datasource (Recommended for Databricks Serverless)
+  # ---------------------------------------------------------------------------
+  # Note: Spark datasource has issues with serverless compute
+  # ("PERSIST TABLE is not supported on serverless compute")
+  # Use Pandas by converting: pdf = df.toPandas()
+  # ---------------------------------------------------------------------------
+  chi311_pandas:
+    class_name: Datasource
+    module_name: great_expectations.datasource
+    execution_engine:
+      class_name: PandasExecutionEngine
+      module_name: great_expectations.execution_engine
+    data_connectors:
+      # Runtime connector for DataFrames passed at validation time
+      runtime_connector:
+        class_name: RuntimeDataConnector
+        module_name: great_expectations.datasource.data_connector
+        batch_identifiers:
+          - batch_id
+          - run_timestamp
+          - layer  # bronze, silver, gold
+
+      # File connector for CSV/Parquet files
+      file_connector:
+        class_name: InferredAssetFilesystemDataConnector
+        module_name: great_expectations.datasource.data_connector
+        base_directory: /Volumes/main/chi311/
+        default_regex:
+          pattern: (.*)\.(.*)
+          group_names:
+            - data_asset_name
+            - extension
+
+  # ---------------------------------------------------------------------------
+  # Spark Datasource (For Databricks Classic Compute)
+  # ---------------------------------------------------------------------------
+  chi311_spark:
+    class_name: Datasource
+    module_name: great_expectations.datasource
+    execution_engine:
+      class_name: SparkDFExecutionEngine
+      module_name: great_expectations.execution_engine
+    data_connectors:
+      # Runtime connector for Spark DataFrames
+      runtime_connector:
+        class_name: RuntimeDataConnector
+        module_name: great_expectations.datasource.data_connector
+        batch_identifiers:
+          - batch_id
+          - run_timestamp
+          - layer
+
+      # Delta Lake connector for Unity Catalog tables
+      delta_connector:
+        class_name: ConfiguredAssetSqlDataConnector
+        module_name: great_expectations.datasource.data_connector
+        assets:
+          bronze_raw_311_requests:
+            table_name: main.chi311.bronze_raw_311_requests
+          bronze_staged_311_requests:
+            table_name: main.chi311.bronze_staged_311_requests
+          silver_scd2_311_requests:
+            table_name: main.chi311.silver_scd2_311_requests
+          silver_current_311_requests:
+            table_name: main.chi311.silver_current_311_requests
+          gold_daily_aggregates:
+            table_name: main.chi311.gold_daily_aggregates
+          gold_citywide_daily_summary:
+            table_name: main.chi311.gold_citywide_daily_summary
+
+# =============================================================================
+# CONFIG VARIABLES
+# =============================================================================
+config_variables_file_path: uncommitted/config_variables.yml
+
+# =============================================================================
+# PLUGINS
+# =============================================================================
+plugins_directory: plugins/
+
+# =============================================================================
+# STORES
+# =============================================================================
+stores:
+  # Store expectation suites as JSON files
+  expectations_store:
+    class_name: ExpectationsStore
+    store_backend:
+      class_name: TupleFilesystemStoreBackend
+      base_directory: expectations/
+
+  # Store validation results (uncommitted - not in git)
+  validations_store:
+    class_name: ValidationsStore
+    store_backend:
+      class_name: TupleFilesystemStoreBackend
+      base_directory: uncommitted/validations/
+
+  # Store evaluation parameters
+  evaluation_parameter_store:
+    class_name: EvaluationParameterStore
+
+  # Store checkpoints
+  checkpoint_store:
+    class_name: CheckpointStore
+    store_backend:
+      class_name: TupleFilesystemStoreBackend
+      base_directory: checkpoints/
+
+  # Store profiler results
+  profiler_store:
+    class_name: ProfilerStore
+    store_backend:
+      class_name: TupleFilesystemStoreBackend
+      base_directory: uncommitted/profilers/
+
+# Default store names
+expectations_store_name: expectations_store
+validations_store_name: validations_store
+evaluation_parameter_store_name: evaluation_parameter_store
+checkpoint_store_name: checkpoint_store
+
+# =============================================================================
+# DATA DOCS SITES
+# =============================================================================
+data_docs_sites:
+  # Local HTML documentation
+  local_site:
+    class_name: SiteBuilder
+    show_how_to_buttons: true
+    store_backend:
+      class_name: TupleFilesystemStoreBackend
+      base_directory: uncommitted/data_docs/local_site/
+    site_index_builder:
+      class_name: DefaultSiteIndexBuilder
+
+  # Databricks-hosted documentation (optional)
+  # Uncomment to enable storage in Unity Catalog volumes
+  # databricks_site:
+  #   class_name: SiteBuilder
+  #   store_backend:
+  #     class_name: TupleFilesystemStoreBackend
+  #     base_directory: /Volumes/main/chi311/data_docs/
+  #   site_index_builder:
+  #     class_name: DefaultSiteIndexBuilder
+
+# =============================================================================
+# ANONYMOUS USAGE STATISTICS
+# =============================================================================
+anonymous_usage_statistics:
+  enabled: false
+
+# =============================================================================
+# FLUENT DATASOURCES (GE 0.18.x)
+# =============================================================================
+# These are configured programmatically in notebooks via:
+#   context.sources.add_or_update_pandas(name="chi311_pandas")
+#   context.sources.add_or_update_spark(name="chi311_spark")
+#
+# See: notebooks/01_data_quality_checks.py for implementation
+
+fluent_datasources: {}
