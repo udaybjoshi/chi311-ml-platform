@@ -1,0 +1,427 @@
+# =============================================================================
+# Chicago 311 Data Quality Rules
+# =============================================================================
+#
+# This file defines data quality expectations for the Lakeflow pipeline.
+# Rules are applied at each layer of the Medallion Architecture.
+#
+# Key Findings from Exploration (00_setup_exploration.py):
+#   - Status values: Open, Completed, Canceled (note: one 'l')
+#   - Info calls: 40% of volume ("311 INFORMATION ONLY CALL")
+#   - Daily volume: ~5,000 total / ~3,000 service requests
+#   - Null rates: Most fields <1%, closed_date ~15%
+#   - Coordinates: Chicago bounds (41.6-42.1 lat, -87.95 to -87.5 lon)
+#   - Wards: 1-50 (numeric)
+#   - Instant closures: 82% resolve in 0 hours
+#
+# =============================================================================
+
+version: "2.0"
+name: chi311_data_quality
+last_updated: "2024-12-23"
+
+# =============================================================================
+# Data Source Configuration
+# =============================================================================
+source:
+  name: Chicago Data Portal
+  endpoint: https://data.cityofchicago.org/resource/v6vf-nfxy.json
+  update_frequency: daily
+  historical_depth: 2018-present
+
+# =============================================================================
+# Bronze Layer Expectations
+# Validate raw data as it arrives from the Chicago Data Portal API
+# =============================================================================
+bronze:
+  raw_311_requests:
+    description: "Raw 311 service requests from Chicago Data Portal API"
+    
+    expectations:
+      # ----- Schema Validation -----
+      - name: sr_number_exists
+        type: column_exists
+        column: sr_number
+        
+      - name: created_date_exists
+        type: column_exists
+        column: created_date
+        
+      - name: sr_type_exists
+        type: column_exists
+        column: sr_type
+        
+      - name: status_exists
+        type: column_exists
+        column: status
+      
+      # ----- Completeness: Critical Fields (0% null observed) -----
+      - name: sr_number_not_null
+        type: not_null
+        column: sr_number
+        action: fail
+        observed_null_rate: "0.0%"
+        
+      - name: created_date_not_null
+        type: not_null
+        column: created_date
+        action: drop
+        observed_null_rate: "0.0%"
+        
+      - name: sr_type_not_null
+        type: not_null
+        column: sr_type
+        action: drop
+        observed_null_rate: "0.0%"
+        
+      - name: status_not_null
+        type: not_null
+        column: status
+        action: drop
+        observed_null_rate: "0.0%"
+      
+      # ----- Completeness: Near-Critical Fields (<1% null observed) -----
+      - name: ward_not_null
+        type: not_null
+        column: ward
+        mostly: 0.99
+        action: warn
+        observed_null_rate: "0.2%"
+        
+      - name: latitude_not_null
+        type: not_null
+        column: latitude
+        mostly: 0.99
+        action: warn
+        observed_null_rate: "0.2%"
+        
+      - name: longitude_not_null
+        type: not_null
+        column: longitude
+        mostly: 0.99
+        action: warn
+        observed_null_rate: "0.2%"
+      
+      # ----- Completeness: Expected Nullable Fields -----
+      - name: closed_date_mostly_present
+        type: not_null
+        column: closed_date
+        mostly: 0.80
+        action: info
+        observed_null_rate: "15.3%"
+        notes: "Nulls expected for open requests"
+      
+      # ----- Uniqueness -----
+      - name: sr_number_unique
+        type: unique
+        column: sr_number
+        action: warn
+        observed_duplicate_rate: "0.0%"
+      
+      # ----- Validity: Status Values -----
+      - name: status_valid_values
+        type: one_of
+        column: status
+        values:
+          - "Open"
+          - "Completed"
+          - "Canceled"  # Note: one 'l', not 'Cancelled'
+        mostly: 0.99
+        action: drop
+        
+      # ----- Validity: Ward Range -----
+      - name: ward_in_range
+        type: between
+        column: ward
+        min: 1
+        max: 50
+        mostly: 0.95
+        action: warn
+        notes: "Chicago has 50 wards"
+      
+      # ----- Validity: Coordinate Bounding Box -----
+      - name: latitude_in_chicago
+        type: between
+        column: latitude
+        min: 41.6
+        max: 42.1
+        mostly: 0.95
+        allow_null: true
+        action: warn
+        
+      - name: longitude_in_chicago
+        type: between
+        column: longitude
+        min: -87.95
+        max: -87.5
+        mostly: 0.95
+        allow_null: true
+        action: warn
+      
+      # ----- Volume Check -----
+      - name: minimum_batch_size
+        type: row_count
+        min: 1000
+        action: warn
+        description: "Daily batch should have significant volume"
+
+# =============================================================================
+# Silver Layer Expectations
+# Validate cleaned and standardized data after transformations
+# =============================================================================
+silver:
+  cleaned_311_requests:
+    description: "Cleaned 311 requests after Silver layer transformations"
+    
+    transformations:
+      - "Status standardized to uppercase"
+      - "Invalid coordinates set to NULL"
+      - "Rows with null critical fields dropped"
+      - "Ward cast to integer"
+    
+    expectations:
+      # ----- Completeness: All Required Fields 100% Non-Null -----
+      - name: all_required_not_null
+        type: not_null
+        columns:
+          - sr_number
+          - created_date
+          - sr_type
+          - status
+          - ward
+        action: fail
+      
+      # ----- Validity: Standardized Status (Uppercase) -----
+      - name: status_standardized
+        type: one_of
+        column: status
+        values:
+          - "OPEN"
+          - "COMPLETED"
+          - "CANCELED"
+        action: fail
+        description: "Status should be uppercase in Silver layer"
+      
+      # ----- Validity: Stricter Ward Range -----
+      - name: ward_valid
+        type: between
+        column: ward
+        min: 1
+        max: 50
+        mostly: 0.99
+        action: fail
+        
+      # ----- Validity: Stricter Coordinates -----
+      - name: latitude_valid
+        type: between
+        column: latitude
+        min: 41.6
+        max: 42.1
+        mostly: 0.99
+        allow_null: true
+        action: fail
+        
+      - name: longitude_valid
+        type: between
+        column: longitude
+        min: -87.95
+        max: -87.5
+        mostly: 0.99
+        allow_null: true
+        action: fail
+      
+      # ----- Uniqueness -----
+      - name: sr_number_unique
+        type: unique
+        column: sr_number
+        action: fail
+        description: "Must be unique for SCD2 business key"
+      
+      # ----- Volume Check -----
+      - name: minimum_row_count
+        type: row_count
+        min: 1000
+        action: fail
+
+# =============================================================================
+# Gold Layer Expectations
+# Validate aggregated and ML-ready data
+# =============================================================================
+gold:
+  daily_aggregates:
+    description: "Daily aggregated 311 requests by ward and sr_type"
+    
+    expectations:
+      # ----- Primary Key Completeness -----
+      - name: date_not_null
+        type: not_null
+        column: date
+        action: fail
+        
+      - name: ward_not_null
+        type: not_null
+        column: ward
+        action: fail
+        
+      - name: sr_type_not_null
+        type: not_null
+        column: sr_type
+        action: fail
+      
+      # ----- Validity: Counts -----
+      - name: request_count_positive
+        type: greater_than
+        column: total_requests
+        value: 0
+        action: fail
+        
+      - name: completion_rate_valid
+        type: between
+        column: completion_rate
+        min: 0.0
+        max: 1.0
+        action: fail
+      
+      # ----- Uniqueness -----
+      - name: unique_aggregate_key
+        type: unique_combination
+        columns:
+          - date
+          - ward
+          - sr_type
+          - is_info_call
+        action: fail
+  
+  citywide_daily_summary:
+    description: "Citywide daily totals for Prophet forecasting"
+    
+    baseline_metrics:
+      daily_mean_all: 5000
+      daily_mean_service: 3001
+      daily_std_service: 925
+      anomaly_threshold_service: 4851
+    
+    expectations:
+      # ----- Prophet Columns -----
+      - name: ds_not_null
+        type: not_null
+        column: ds
+        action: fail
+        description: "Prophet requires 'ds' column"
+        
+      - name: y_not_null
+        type: not_null
+        column: y
+        action: fail
+        description: "Prophet requires 'y' column"
+      
+      # ----- Uniqueness -----
+      - name: date_unique
+        type: unique
+        column: date
+        action: fail
+        
+      # ----- Validity -----
+      - name: service_requests_reasonable
+        type: between
+        column: service_requests
+        min: 500
+        max: 10000
+        action: warn
+        description: "Daily service requests should be 500-10,000"
+
+# =============================================================================
+# SCD Type 2 Expectations
+# Validate history tracking
+# =============================================================================
+scd2:
+  silver_scd2_311_requests:
+    description: "SCD Type 2 history table validation"
+    
+    expected_metrics:
+      avg_versions_per_request: 1.2
+      max_versions_per_request: 10
+    
+    expectations:
+      - name: sr_number_not_null
+        type: not_null
+        column: sr_number
+        action: fail
+        
+      - name: start_at_not_null
+        type: not_null
+        column: __START_AT
+        action: fail
+        
+      - name: version_rate_healthy
+        type: custom_sql
+        sql: |
+          ROUND(COUNT(*) * 1.0 / COUNT(DISTINCT sr_number), 2) BETWEEN 1.0 AND 2.0
+        action: warn
+        description: "Expected 1.2-1.5 versions per request"
+
+# =============================================================================
+# Data Quality Monitoring Thresholds
+# =============================================================================
+monitoring:
+  # Info call ratio should be ~40%
+  info_call_ratio:
+    expected: 0.40
+    warning_range: [0.35, 0.45]
+    critical_range: [0.30, 0.50]
+    
+  # Completion rate should be ~84%
+  completion_rate:
+    expected: 0.84
+    warning_range: [0.80, 0.90]
+    critical_range: [0.70, 0.95]
+    
+  # Anomaly detection thresholds
+  anomaly:
+    service_requests:
+      mean: 3001
+      std: 925
+      threshold_multiplier: 2  # mean + 2σ = 4851
+    all_requests:
+      mean: 5000
+      std: 1290
+      threshold_multiplier: 2  # mean + 2σ = 7580
+  
+  # Pipeline freshness
+  freshness:
+    warning_hours: 24
+    critical_hours: 48
+    
+  # Quality gate threshold
+  quality_gate:
+    min_pass_rate: 80.0
+
+# =============================================================================
+# Cross-Layer Validation
+# =============================================================================
+cross_layer:
+  bronze_to_silver:
+    description: "Validate Bronze → Silver transformation"
+    expectations:
+      - name: row_retention
+        type: custom_sql
+        sql: |
+          (SELECT COUNT(*) FROM silver_current_311_requests) 
+          >= 
+          (SELECT COUNT(*) FROM bronze_staged_311_requests) * 0.95
+        action: warn
+        description: "Silver should retain at least 95% of Bronze rows"
+  
+  silver_to_gold:
+    description: "Validate Silver → Gold aggregation"
+    expectations:
+      - name: count_consistency
+        type: custom_sql
+        sql: |
+          ABS(
+            (SELECT SUM(total_requests) FROM gold_daily_aggregates WHERE date >= CURRENT_DATE - 7)
+            -
+            (SELECT COUNT(*) FROM silver_current_311_requests WHERE DATE(created_date) >= CURRENT_DATE - 7)
+          ) < 100
+        action: warn
+        description: "Gold aggregates should match Silver row counts"

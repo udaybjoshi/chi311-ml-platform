@@ -1,0 +1,144 @@
+{
+    "expectation_suite_name": "gold_daily_aggregates_suite",
+    "ge_cloud_id": null,
+    "meta": {
+      "great_expectations_version": "0.18.8",
+      "citations": [
+        {
+          "citation_date": "2024-12-23",
+          "comment": "Chicago 311 Gold layer - aggregated data validation"
+        }
+      ],
+      "notes": {
+        "description": "Validates daily aggregated 311 requests by ward and sr_type",
+        "baseline_metrics": {
+          "daily_mean_all": 5000,
+          "daily_mean_service": 3001,
+          "daily_std_service": 925,
+          "anomaly_threshold_service": 4851,
+          "info_call_ratio": 0.40
+        }
+      }
+    },
+    "expectations": [
+      {
+        "expectation_type": "expect_column_to_exist",
+        "kwargs": {"column": "date"},
+        "meta": {"dimension": "schema", "notes": "Partition key"}
+      },
+      {
+        "expectation_type": "expect_column_to_exist",
+        "kwargs": {"column": "ward"},
+        "meta": {"dimension": "schema"}
+      },
+      {
+        "expectation_type": "expect_column_to_exist",
+        "kwargs": {"column": "sr_type"},
+        "meta": {"dimension": "schema"}
+      },
+      {
+        "expectation_type": "expect_column_to_exist",
+        "kwargs": {"column": "total_requests"},
+        "meta": {"dimension": "schema"}
+      },
+      {
+        "expectation_type": "expect_column_to_exist",
+        "kwargs": {"column": "completion_rate"},
+        "meta": {"dimension": "schema"}
+      },
+      {
+        "expectation_type": "expect_column_values_to_not_be_null",
+        "kwargs": {"column": "date"},
+        "meta": {
+          "dimension": "completeness",
+          "severity": "critical"
+        }
+      },
+      {
+        "expectation_type": "expect_column_values_to_not_be_null",
+        "kwargs": {"column": "ward"},
+        "meta": {
+          "dimension": "completeness",
+          "severity": "critical"
+        }
+      },
+      {
+        "expectation_type": "expect_column_values_to_not_be_null",
+        "kwargs": {"column": "sr_type"},
+        "meta": {
+          "dimension": "completeness",
+          "severity": "critical"
+        }
+      },
+      {
+        "expectation_type": "expect_column_values_to_not_be_null",
+        "kwargs": {"column": "total_requests"},
+        "meta": {
+          "dimension": "completeness",
+          "severity": "critical"
+        }
+      },
+      {
+        "expectation_type": "expect_column_values_to_be_between",
+        "kwargs": {
+          "column": "total_requests",
+          "min_value": 1,
+          "max_value": null
+        },
+        "meta": {
+          "dimension": "validity",
+          "severity": "critical",
+          "notes": "Aggregates must have at least 1 request"
+        }
+      },
+      {
+        "expectation_type": "expect_column_values_to_be_between",
+        "kwargs": {
+          "column": "completion_rate",
+          "min_value": 0.0,
+          "max_value": 1.0
+        },
+        "meta": {
+          "dimension": "validity",
+          "severity": "critical",
+          "notes": "Completion rate must be between 0 and 1"
+        }
+      },
+      {
+        "expectation_type": "expect_column_values_to_be_between",
+        "kwargs": {
+          "column": "ward",
+          "min_value": 1,
+          "max_value": 50
+        },
+        "meta": {
+          "dimension": "validity",
+          "severity": "critical",
+          "notes": "Chicago has 50 wards"
+        }
+      },
+      {
+        "expectation_type": "expect_compound_columns_to_be_unique",
+        "kwargs": {
+          "column_list": ["date", "ward", "sr_type", "is_info_call"]
+        },
+        "meta": {
+          "dimension": "uniqueness",
+          "severity": "critical",
+          "notes": "No duplicate aggregation keys"
+        }
+      },
+      {
+        "expectation_type": "expect_table_row_count_to_be_between",
+        "kwargs": {
+          "min_value": 100,
+          "max_value": null
+        },
+        "meta": {
+          "dimension": "completeness",
+          "severity": "warning",
+          "notes": "Should have meaningful number of aggregate rows"
+        }
+      }
+    ]
+  }

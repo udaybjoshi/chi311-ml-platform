@@ -1,0 +1,231 @@
+{
+    "expectation_suite_name": "bronze_311_requests_suite",
+    "ge_cloud_id": null,
+    "meta": {
+      "great_expectations_version": "0.18.8",
+      "citations": [
+        {
+          "citation_date": "2024-12-23",
+          "comment": "Chicago 311 Bronze layer - updated with exploration findings from 00_setup_exploration.py"
+        }
+      ],
+      "notes": {
+        "description": "Validates raw 311 service requests from Chicago Data Portal API",
+        "source": "https://data.cityofchicago.org/resource/v6vf-nfxy.json",
+        "key_findings": {
+          "status_values": ["Open", "Completed", "Canceled"],
+          "info_calls_pct": 40,
+          "daily_volume": 5000,
+          "null_rates": {
+            "sr_number": "0.0%",
+            "created_date": "0.0%",
+            "sr_type": "0.0%",
+            "status": "0.0%",
+            "ward": "0.2%",
+            "latitude": "0.2%",
+            "longitude": "0.2%",
+            "zip_code": "13.1%",
+            "closed_date": "15.3%"
+          }
+        }
+      }
+    },
+    "expectations": [
+      {
+        "expectation_type": "expect_column_to_exist",
+        "kwargs": {"column": "sr_number"},
+        "meta": {"dimension": "schema", "notes": "Business key for SCD2"}
+      },
+      {
+        "expectation_type": "expect_column_to_exist",
+        "kwargs": {"column": "created_date"},
+        "meta": {"dimension": "schema"}
+      },
+      {
+        "expectation_type": "expect_column_to_exist",
+        "kwargs": {"column": "sr_type"},
+        "meta": {"dimension": "schema"}
+      },
+      {
+        "expectation_type": "expect_column_to_exist",
+        "kwargs": {"column": "status"},
+        "meta": {"dimension": "schema"}
+      },
+      {
+        "expectation_type": "expect_column_to_exist",
+        "kwargs": {"column": "ward"},
+        "meta": {"dimension": "schema"}
+      },
+      {
+        "expectation_type": "expect_column_to_exist",
+        "kwargs": {"column": "latitude"},
+        "meta": {"dimension": "schema"}
+      },
+      {
+        "expectation_type": "expect_column_to_exist",
+        "kwargs": {"column": "longitude"},
+        "meta": {"dimension": "schema"}
+      },
+      {
+        "expectation_type": "expect_column_values_to_not_be_null",
+        "kwargs": {"column": "sr_number"},
+        "meta": {
+          "dimension": "completeness",
+          "severity": "critical",
+          "observed_null_rate": "0.0%"
+        }
+      },
+      {
+        "expectation_type": "expect_column_values_to_not_be_null",
+        "kwargs": {"column": "created_date"},
+        "meta": {
+          "dimension": "completeness",
+          "severity": "critical",
+          "observed_null_rate": "0.0%"
+        }
+      },
+      {
+        "expectation_type": "expect_column_values_to_not_be_null",
+        "kwargs": {"column": "sr_type"},
+        "meta": {
+          "dimension": "completeness",
+          "severity": "critical",
+          "observed_null_rate": "0.0%"
+        }
+      },
+      {
+        "expectation_type": "expect_column_values_to_not_be_null",
+        "kwargs": {"column": "status"},
+        "meta": {
+          "dimension": "completeness",
+          "severity": "critical",
+          "observed_null_rate": "0.0%"
+        }
+      },
+      {
+        "expectation_type": "expect_column_values_to_not_be_null",
+        "kwargs": {
+          "column": "ward",
+          "mostly": 0.99
+        },
+        "meta": {
+          "dimension": "completeness",
+          "severity": "warning",
+          "observed_null_rate": "0.2%"
+        }
+      },
+      {
+        "expectation_type": "expect_column_values_to_not_be_null",
+        "kwargs": {
+          "column": "latitude",
+          "mostly": 0.99
+        },
+        "meta": {
+          "dimension": "completeness",
+          "severity": "warning",
+          "observed_null_rate": "0.2%"
+        }
+      },
+      {
+        "expectation_type": "expect_column_values_to_not_be_null",
+        "kwargs": {
+          "column": "longitude",
+          "mostly": 0.99
+        },
+        "meta": {
+          "dimension": "completeness",
+          "severity": "warning",
+          "observed_null_rate": "0.2%"
+        }
+      },
+      {
+        "expectation_type": "expect_column_values_to_not_be_null",
+        "kwargs": {
+          "column": "closed_date",
+          "mostly": 0.80
+        },
+        "meta": {
+          "dimension": "completeness",
+          "severity": "info",
+          "observed_null_rate": "15.3%",
+          "notes": "Nulls expected for open requests"
+        }
+      },
+      {
+        "expectation_type": "expect_column_values_to_be_unique",
+        "kwargs": {"column": "sr_number"},
+        "meta": {
+          "dimension": "uniqueness",
+          "severity": "warning",
+          "observed_duplicate_rate": "0.0%"
+        }
+      },
+      {
+        "expectation_type": "expect_column_values_to_be_in_set",
+        "kwargs": {
+          "column": "status",
+          "value_set": ["Open", "Completed", "Canceled"],
+          "mostly": 0.99
+        },
+        "meta": {
+          "dimension": "validity",
+          "severity": "critical",
+          "notes": "Chicago uses 'Canceled' (one L), not 'Cancelled'"
+        }
+      },
+      {
+        "expectation_type": "expect_column_values_to_be_between",
+        "kwargs": {
+          "column": "ward",
+          "min_value": 1,
+          "max_value": 50,
+          "mostly": 0.95
+        },
+        "meta": {
+          "dimension": "validity",
+          "severity": "warning",
+          "notes": "Chicago has 50 wards (numbered 1-50)"
+        }
+      },
+      {
+        "expectation_type": "expect_column_values_to_be_between",
+        "kwargs": {
+          "column": "latitude",
+          "min_value": 41.6,
+          "max_value": 42.1,
+          "mostly": 0.95
+        },
+        "meta": {
+          "dimension": "validity",
+          "severity": "warning",
+          "notes": "Chicago latitude bounding box"
+        }
+      },
+      {
+        "expectation_type": "expect_column_values_to_be_between",
+        "kwargs": {
+          "column": "longitude",
+          "min_value": -87.95,
+          "max_value": -87.5,
+          "mostly": 0.95
+        },
+        "meta": {
+          "dimension": "validity",
+          "severity": "warning",
+          "notes": "Chicago longitude bounding box"
+        }
+      },
+      {
+        "expectation_type": "expect_table_row_count_to_be_between",
+        "kwargs": {
+          "min_value": 1000,
+          "max_value": null
+        },
+        "meta": {
+          "dimension": "completeness",
+          "severity": "critical",
+          "notes": "Daily batch should have significant volume"
+        }
+      }
+    ]
+  }

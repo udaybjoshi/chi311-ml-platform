@@ -1,0 +1,165 @@
+{
+    "expectation_suite_name": "silver_311_requests_suite",
+    "ge_cloud_id": null,
+    "meta": {
+      "great_expectations_version": "0.18.8",
+      "citations": [
+        {
+          "citation_date": "2024-12-23",
+          "comment": "Chicago 311 Silver layer - stricter validation after Bronze cleaning"
+        }
+      ],
+      "notes": {
+        "description": "Validates cleaned 311 requests after Silver layer transformations",
+        "transformations_applied": [
+          "Status standardized to uppercase",
+          "Invalid coordinates set to NULL",
+          "Rows with null critical fields dropped",
+          "Ward cast to integer"
+        ],
+        "expected_status_values": ["OPEN", "COMPLETED", "CANCELED"]
+      }
+    },
+    "expectations": [
+      {
+        "expectation_type": "expect_column_to_exist",
+        "kwargs": {"column": "sr_number"},
+        "meta": {"dimension": "schema"}
+      },
+      {
+        "expectation_type": "expect_column_to_exist",
+        "kwargs": {"column": "created_date"},
+        "meta": {"dimension": "schema"}
+      },
+      {
+        "expectation_type": "expect_column_to_exist",
+        "kwargs": {"column": "sr_type"},
+        "meta": {"dimension": "schema"}
+      },
+      {
+        "expectation_type": "expect_column_to_exist",
+        "kwargs": {"column": "status"},
+        "meta": {"dimension": "schema"}
+      },
+      {
+        "expectation_type": "expect_column_to_exist",
+        "kwargs": {"column": "ward"},
+        "meta": {"dimension": "schema"}
+      },
+      {
+        "expectation_type": "expect_column_values_to_not_be_null",
+        "kwargs": {"column": "sr_number"},
+        "meta": {
+          "dimension": "completeness",
+          "severity": "critical",
+          "notes": "Required after Bronze filtering"
+        }
+      },
+      {
+        "expectation_type": "expect_column_values_to_not_be_null",
+        "kwargs": {"column": "created_date"},
+        "meta": {
+          "dimension": "completeness",
+          "severity": "critical"
+        }
+      },
+      {
+        "expectation_type": "expect_column_values_to_not_be_null",
+        "kwargs": {"column": "sr_type"},
+        "meta": {
+          "dimension": "completeness",
+          "severity": "critical"
+        }
+      },
+      {
+        "expectation_type": "expect_column_values_to_not_be_null",
+        "kwargs": {"column": "status"},
+        "meta": {
+          "dimension": "completeness",
+          "severity": "critical"
+        }
+      },
+      {
+        "expectation_type": "expect_column_values_to_not_be_null",
+        "kwargs": {"column": "ward"},
+        "meta": {
+          "dimension": "completeness",
+          "severity": "critical",
+          "notes": "Required after Bronze filtering"
+        }
+      },
+      {
+        "expectation_type": "expect_column_values_to_be_in_set",
+        "kwargs": {
+          "column": "status",
+          "value_set": ["OPEN", "COMPLETED", "CANCELED"]
+        },
+        "meta": {
+          "dimension": "validity",
+          "severity": "critical",
+          "notes": "Status standardized to uppercase in Silver layer"
+        }
+      },
+      {
+        "expectation_type": "expect_column_values_to_be_between",
+        "kwargs": {
+          "column": "ward",
+          "min_value": 1,
+          "max_value": 50,
+          "mostly": 0.99
+        },
+        "meta": {
+          "dimension": "validity",
+          "severity": "critical",
+          "notes": "Stricter threshold after cleaning"
+        }
+      },
+      {
+        "expectation_type": "expect_column_values_to_be_between",
+        "kwargs": {
+          "column": "latitude",
+          "min_value": 41.6,
+          "max_value": 42.1,
+          "mostly": 0.99
+        },
+        "meta": {
+          "dimension": "validity",
+          "severity": "critical",
+          "notes": "Invalid coordinates filtered in Bronze"
+        }
+      },
+      {
+        "expectation_type": "expect_column_values_to_be_between",
+        "kwargs": {
+          "column": "longitude",
+          "min_value": -87.95,
+          "max_value": -87.5,
+          "mostly": 0.99
+        },
+        "meta": {
+          "dimension": "validity",
+          "severity": "critical"
+        }
+      },
+      {
+        "expectation_type": "expect_column_values_to_be_unique",
+        "kwargs": {"column": "sr_number"},
+        "meta": {
+          "dimension": "uniqueness",
+          "severity": "critical",
+          "notes": "Must be unique for SCD2 business key"
+        }
+      },
+      {
+        "expectation_type": "expect_table_row_count_to_be_between",
+        "kwargs": {
+          "min_value": 1000,
+          "max_value": null
+        },
+        "meta": {
+          "dimension": "completeness",
+          "severity": "critical"
+        }
+      }
+    ]
+  }
