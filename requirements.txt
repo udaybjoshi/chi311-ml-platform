@@ -1,0 +1,103 @@
+# =============================================================================
+# Chicago 311 Intelligence Platform - Python Dependencies
+# =============================================================================
+#
+# This file lists all Python packages required for the project.
+#
+# Usage:
+#   Local development: pip install -r requirements.txt
+#   Databricks: Most packages are pre-installed, only install missing ones
+#
+# Note: Databricks Free Edition includes most data engineering packages
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Core Data Processing
+# -----------------------------------------------------------------------------
+pandas>=2.0.0
+numpy>=1.24.0
+pyarrow>=14.0.0
+
+# -----------------------------------------------------------------------------
+# Databricks / Spark (pre-installed in Databricks Runtime)
+# -----------------------------------------------------------------------------
+# pyspark>=3.5.0          # Pre-installed in Databricks
+# delta-spark>=3.0.0      # Pre-installed in Databricks
+databricks-sdk>=0.20.0    # For programmatic Databricks API access
+
+# -----------------------------------------------------------------------------
+# Machine Learning - Forecasting
+# -----------------------------------------------------------------------------
+prophet>=1.1.5            # Time series forecasting
+scikit-learn>=1.3.0       # ML utilities
+statsmodels>=0.14.0       # Statistical models
+
+# -----------------------------------------------------------------------------
+# Machine Learning - Experiment Tracking
+# -----------------------------------------------------------------------------
+# mlflow>=2.10.0          # Pre-installed in Databricks
+
+# -----------------------------------------------------------------------------
+# API Client
+# -----------------------------------------------------------------------------
+requests>=2.31.0          # HTTP client for Chicago 311 API
+urllib3>=2.0.0            # HTTP library
+
+# -----------------------------------------------------------------------------
+# Data Validation (Great Expectations)
+# -----------------------------------------------------------------------------
+great-expectations>=0.18.0
+
+# -----------------------------------------------------------------------------
+# Visualization
+# -----------------------------------------------------------------------------
+matplotlib>=3.8.0
+plotly>=5.18.0
+seaborn>=0.13.0
+
+# -----------------------------------------------------------------------------
+# Dashboard (Optional - for local Streamlit app)
+# -----------------------------------------------------------------------------
+streamlit>=1.30.0
+
+# -----------------------------------------------------------------------------
+# Testing
+# -----------------------------------------------------------------------------
+pytest>=8.0.0
+pytest-cov>=4.1.0
+pytest-mock>=3.12.0
+
+# -----------------------------------------------------------------------------
+# Code Quality
+# -----------------------------------------------------------------------------
+black>=24.0.0             # Code formatting
+isort>=5.13.0             # Import sorting
+flake8>=7.0.0             # Linting
+mypy>=1.8.0               # Type checking
+
+# -----------------------------------------------------------------------------
+# Documentation
+# -----------------------------------------------------------------------------
+mkdocs>=1.5.0
+mkdocs-material>=9.5.0
+
+# -----------------------------------------------------------------------------
+# Databricks-Specific Installation Notes
+# -----------------------------------------------------------------------------
+# 
+# To install packages in Databricks notebook:
+#
+#   %pip install great-expectations prophet
+#
+# Or in cluster configuration:
+#   Add to "Libraries" tab: great-expectations, prophet
+#
+# Pre-installed packages (do NOT install):
+#   - pyspark
+#   - delta-spark  
+#   - mlflow
+#   - pandas
+#   - numpy
+#   - matplotlib
+#   - plotly
+# =============================================================================
