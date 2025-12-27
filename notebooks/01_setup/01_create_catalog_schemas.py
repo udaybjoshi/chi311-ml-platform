@@ -1,13 +1,13 @@
 # Databricks notebook source
 # MAGIC %md
 # MAGIC # 01 - Create Catalog and Schemas
-# MAGIC 
+# MAGIC
 # MAGIC **Purpose**: Set up Unity Catalog structure for the Chicago 311 project
-# MAGIC 
+# MAGIC
 # MAGIC **Methodology**: Following Databricks Free Edition best practices with Unity Catalog
-# MAGIC 
+# MAGIC
 # MAGIC **Run**: Once during initial setup
-# MAGIC 
+# MAGIC
 # MAGIC **Prerequisites**:
 # MAGIC - Databricks Free Edition account
 # MAGIC - Unity Catalog enabled (default in Free Edition)
@@ -16,7 +16,7 @@
 
 # MAGIC %md
 # MAGIC ## Unity Catalog Structure
-# MAGIC 
+# MAGIC
 # MAGIC ```
 # MAGIC workspace (catalog)
 # MAGIC ├── raw      (schema) - Volumes for raw files
@@ -25,9 +25,9 @@
 # MAGIC ├── gold     (schema) - Aggregated tables for analytics
 # MAGIC └── ml       (schema) - ML models and predictions
 # MAGIC ```
-# MAGIC 
+# MAGIC
 # MAGIC **Three-Level Namespace**: `catalog.schema.table`
-# MAGIC 
+# MAGIC
 # MAGIC Example: `workspace.silver.silver_scd2_311_requests`
 
 # COMMAND ----------
@@ -141,7 +141,7 @@ def drop_schema(catalog_name: str, schema_name: str) -> bool:
 
 # MAGIC %md
 # MAGIC ## Step 1: Verify Catalog Exists
-# MAGIC 
+# MAGIC
 # MAGIC In Databricks Free Edition, the `workspace` catalog is pre-created.
 
 # COMMAND ----------
@@ -170,9 +170,9 @@ print(f"\n Using catalog: {CATALOG_NAME}")
 
 # MAGIC %md
 # MAGIC ## Step 2: Reset Schemas (Optional)
-# MAGIC 
+# MAGIC
 # MAGIC If `reset_schemas` is true, drop all existing schemas first.
-# MAGIC 
+# MAGIC
 # MAGIC ⚠️ **WARNING**: This will delete all tables and data in these schemas!
 
 # COMMAND ----------
@@ -224,6 +224,12 @@ print(f"Summary: Created={created_count}, Existing={existing_count}, Failed={fai
 
 # COMMAND ----------
 
+for schema_name in ["raw", "bronze", "silver", "gold", "ml"]:
+    tables = spark.sql(f"SHOW TABLES IN {CATALOG_NAME}.{schema_name}").collect()
+    print(f"{schema_name}: {len(tables)} tables")
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Step 4: Verify Setup
 
@@ -244,12 +250,28 @@ print("-" * 60)
 
 for schema_name in SCHEMAS.keys():
     try:
-        desc = spark.sql(f"DESCRIBE SCHEMA EXTENDED {CATALOG_NAME}.{schema_name}").collect()
+        desc_df = spark.sql(f"DESCRIBE SCHEMA EXTENDED {CATALOG_NAME}.{schema_name}")
         print(f"\n{CATALOG_NAME}.{schema_name}:")
-        for row in desc:
-            print(f"  {row.info_name}: {row.info_value}")
+        
+        # Get actual column names and display
+        for row in desc_df.collect():
+            # Convert row to dictionary to handle any column names
+            row_dict = row.asDict()
+            values = list(row_dict.values())
+            if len(values) >= 2:
+                print(f"  {values[0]}: {values[1]}")
+            else:
+                print(f"  {values}")
     except Exception as e:
         print(f"\n{CATALOG_NAME}.{schema_name}: Error - {e}")
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC COMMENT ON SCHEMA workspace.raw IS 'Raw file storage in Volumes - landing zone for API data';
+# MAGIC COMMENT ON SCHEMA workspace.bronze IS 'Raw Delta tables from Autoloader ingestion';
+# MAGIC COMMENT ON SCHEMA workspace.silver IS 'Cleaned and SCD2 tracked tables';
+# MAGIC COMMENT ON SCHEMA workspace.gold IS 'Aggregated tables for analytics and ML';
 
 # COMMAND ----------
 
@@ -298,9 +320,9 @@ for key, value in config.items():
 
 # MAGIC %md
 # MAGIC ## Summary
-# MAGIC 
+# MAGIC
 # MAGIC Created Unity Catalog structure for Chicago 311 project:
-# MAGIC 
+# MAGIC
 # MAGIC | Schema | Full Path | Purpose |
 # MAGIC |--------|-----------|---------|
 # MAGIC | `raw` | `workspace.raw` | Volumes for raw JSON files from API |
@@ -308,7 +330,7 @@ for key, value in config.items():
 # MAGIC | `silver` | `workspace.silver` | Cleaned data with SCD Type 2 history |
 # MAGIC | `gold` | `workspace.gold` | Aggregated tables for dashboards & ML |
 # MAGIC | `ml` | `workspace.ml` | MLflow models and predictions |
-# MAGIC 
+# MAGIC
 # MAGIC **Next Step**: Run `02_create_volumes.py` to create file storage volumes
 
 # COMMAND ----------

@@ -282,6 +282,13 @@ bronze_suite.add_expectation(
 
 print(f"✓ Bronze suite created with {len(bronze_suite.expectations)} expectations")
 
+# ============================================
+# SAVE THE SUITE TO CONTEXT (REQUIRED!)
+# ============================================
+context.add_or_update_expectation_suite(expectation_suite=bronze_suite)
+
+print(f"✓ Bronze suite created and saved with {len(bronze_suite.expectations)} expectations")
+
 # COMMAND ----------
 
 # MAGIC %md
@@ -378,6 +385,13 @@ silver_suite.add_expectation(
 )
 
 print(f"✓ Silver suite created with {len(silver_suite.expectations)} expectations")
+
+# ============================================
+# SAVE THE SUITE TO CONTEXT (REQUIRED!)
+# ============================================
+context.add_or_update_expectation_suite(expectation_suite=silver_suite)
+
+print(f"✓ Silver suite created and saved with {len(silver_suite.expectations)} expectations")
 
 # COMMAND ----------
 
@@ -538,9 +552,10 @@ print(f"Rows filtered: {df.count() - df_silver.count():,}")
 
 # COMMAND ----------
 
-# Create new batch for Silver data
+# Create new batch for Silver data (convert to Pandas)
+pdf_silver = df_silver.toPandas()
 silver_asset = datasource.add_dataframe_asset(name="chi311_silver_data")
-silver_batch = silver_asset.build_batch_request(dataframe=df_silver)
+silver_batch = silver_asset.build_batch_request(dataframe=pdf_silver)
 
 # Get validator for Silver suite
 silver_validator = context.get_validator(
@@ -558,7 +573,21 @@ print(f"Overall Success: {'✓ PASSED' if silver_results.success else '✗ FAILE
 print(f"Evaluated Expectations: {silver_results.statistics['evaluated_expectations']}")
 print(f"Successful: {silver_results.statistics['successful_expectations']}")
 print(f"Failed: {silver_results.statistics['unsuccessful_expectations']}")
-print(f"Success Rate: {silver_results.statistics['success_percent']:.1f}%")
+
+# Handle None for success_percent
+success_pct = silver_results.statistics.get('success_percent')
+if success_pct is not None:
+    print(f"Success Rate: {success_pct:.1f}%")
+else:
+    evaluated = silver_results.statistics['evaluated_expectations'] or 0
+    successful = silver_results.statistics['successful_expectations'] or 0
+    if evaluated > 0:
+        calculated_pct = (successful/evaluated)*100
+        print(f"Success Rate: {calculated_pct:.1f}%")
+        silver_results.statistics['success_percent'] = calculated_pct
+    else:
+        print("Success Rate: N/A (no expectations evaluated)")
+        silver_results.statistics['success_percent'] = 0.0
 
 # COMMAND ----------
 
