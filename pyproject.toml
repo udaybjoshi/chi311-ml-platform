@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chi311"
+version = "0.1.0"
+description = "Chicago 311 Service Request Intelligence Platform (Databricks Free Edition)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Uday Joshi", email = "udayjoshi82@gmail.com" }]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+]
+markers = [
+    "integration: marks tests requiring a local SparkSession (may be slow)",
+    "network: marks tests that hit external services; skipped by default",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning:pyspark.*",
+    "ignore::DeprecationWarning:pkg_resources.*",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["chi311"]
+omit = ["*/__init__.py"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false

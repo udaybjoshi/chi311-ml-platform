@@ -1,0 +1,27 @@
+# Chicago 311 Intelligence Platform - Dev / test dependencies
+#
+# These are only needed for local development and CI.
+# They are NOT installed inside Databricks notebooks.
+#
+# Usage:
+#   python3.11 -m venv .venv
+#   source .venv/bin/activate
+#   pip install -r requirements-dev.txt
+#   pytest
+
+# Local Spark (mirrors Databricks Runtime 15.x Spark 3.5.x)
+pyspark==3.5.1
+delta-spark==3.2.0
+
+# HTTP client + mocking
+requests>=2.31.0
+responses>=0.25.0
+
+# Test runner
+pytest>=8.0.0
+pytest-cov>=4.1.0
+pytest-mock>=3.12.0
+
+# Core data libs used in pure-python transforms and tests
+pandas>=2.0.0
+numpy>=1.24.0
