@@ -1,43 +1,35 @@
 # Databricks notebook source
 # MAGIC %md
 # MAGIC # 02 - Create Volumes
-# MAGIC 
-# MAGIC **Purpose**: Set up Unity Catalog Volumes for file storage
-# MAGIC 
-# MAGIC **What are Volumes?**
-# MAGIC 
-# MAGIC Volumes are the governance layer for files in Unity Catalog. Unlike DBFS, Volumes provide:
-# MAGIC - **Access control**: Fine-grained permissions via Unity Catalog
-# MAGIC - **Discovery**: Files are visible in the catalog explorer
-# MAGIC - **SQL queryability**: Can query files directly with SQL
-# MAGIC - **Governance**: Full lineage and audit trail
-# MAGIC 
-# MAGIC **Run**: Once during initial setup (after 01_create_catalog_schemas.py)
-# MAGIC 
-# MAGIC **Prerequisites**:
-# MAGIC - Run `01_create_catalog_schemas.py` first
-# MAGIC - Unity Catalog schemas must exist
+# MAGIC
+# MAGIC **Purpose**: Set up Unity Catalog Volumes for file storage.
+# MAGIC
+# MAGIC **Why Volumes** (not DBFS): on Databricks Free Edition, DBFS is
+# MAGIC read-only for user data. Volumes are the governed location for raw
+# MAGIC files, checkpoints, and ML artifacts, and they work out of the box
+# MAGIC on serverless.
+# MAGIC
+# MAGIC **Prerequisite**: Run `01_create_catalog_schemas.py` first.
 
 # COMMAND ----------
 
 # MAGIC %md
 # MAGIC ## Volume Structure
-# MAGIC 
+# MAGIC
 # MAGIC ```
-# MAGIC /Volumes/workspace/raw/chi311_landing/
-# MAGIC ├── initial/              # First bulk load (historical data)
-# MAGIC │   └── chi311_20241201.json
-# MAGIC ├── incremental/          # Daily incremental files
-# MAGIC │   ├── chi311_20241202_060000.json
-# MAGIC │   └── chi311_20241203_060000.json
-# MAGIC └── archive/              # Processed files (optional)
-# MAGIC 
-# MAGIC /Volumes/workspace/bronze/chi311_checkpoint/
-# MAGIC ├── autoloader/           # Autoloader streaming checkpoint
-# MAGIC └── schema/               # Inferred schema location
-# MAGIC 
-# MAGIC /Volumes/workspace/ml/chi311_models/
-# MAGIC └── prophet/              # Exported Prophet models
+# MAGIC /Volumes/<catalog>/raw/chi311_landing/
+# MAGIC ├── initial/        # first bulk load (historical data)
+# MAGIC ├── incremental/    # daily incremental files
+# MAGIC └── archive/        # processed files (optional)
+# MAGIC
+# MAGIC /Volumes/<catalog>/bronze/chi311_checkpoint/
+# MAGIC ├── autoloader/     # streaming checkpoint
+# MAGIC └── schema/         # Autoloader inferred-schema location
+# MAGIC
+# MAGIC /Volumes/<catalog>/ml/chi311_models/
+# MAGIC ├── prophet/        # exported Prophet models
+# MAGIC ├── predictions/    # batch prediction outputs
+# MAGIC └── features/       # feature-store exports
 # MAGIC ```
 
 # COMMAND ----------
@@ -47,19 +39,14 @@
 
 # COMMAND ----------
 
-# Create widgets
 dbutils.widgets.text("catalog_name", "workspace", "Catalog Name")
 dbutils.widgets.dropdown("reset_volumes", "false", ["true", "false"], "Reset Volumes (DROP ALL)")
 
-# Get values
 CATALOG_NAME = dbutils.widgets.get("catalog_name")
 RESET_VOLUMES = dbutils.widgets.get("reset_volumes") == "true"
 
-print(f"Catalog Name: {CATALOG_NAME}")
+print(f"Catalog Name:  {CATALOG_NAME}")
 print(f"Reset Volumes: {RESET_VOLUMES}")
-
-if RESET_VOLUMES:
-    print("\n⚠️ WARNING: Reset mode enabled - existing volumes will be dropped!")
 
 # COMMAND ----------
 
@@ -68,37 +55,25 @@ if RESET_VOLUMES:
 
 # COMMAND ----------
 
-# Volume definitions: {schema: {volume_name: {description, directories}}}
 VOLUMES = {
     "raw": {
         "chi311_landing": {
             "description": "Landing zone for raw JSON files from Chicago 311 API",
-            "directories": [
-                "initial",      # Bulk historical load
-                "incremental",  # Daily incremental files
-                "archive"       # Processed files (optional)
-            ]
-        }
+            "directories": ["initial", "incremental", "archive"],
+        },
     },
     "bronze": {
         "chi311_checkpoint": {
             "description": "Checkpoint location for Autoloader streaming state",
-            "directories": [
-                "autoloader",   # Streaming checkpoint
-                "schema"        # Schema inference location
-            ]
-        }
+            "directories": ["autoloader", "schema"],
+        },
     },
     "ml": {
         "chi311_models": {
             "description": "Storage for exported ML models and artifacts",
-            "directories": [
-                "prophet",      # Prophet model exports
-                "predictions",  # Batch prediction outputs
-                "features"      # Feature store exports
-            ]
-        }
-    }
+            "directories": ["prophet", "predictions", "features"],
+        },
+    },
 }
 
 # COMMAND ----------
@@ -109,56 +84,34 @@ VOLUMES = {
 # COMMAND ----------
 
 def volume_exists(catalog: str, schema: str, volume: str) -> bool:
-    """Check if a volume exists"""
     try:
         spark.sql(f"DESCRIBE VOLUME {catalog}.{schema}.{volume}")
         return True
     except Exception as e:
-        if "VOLUME_NOT_FOUND" in str(e) or "does not exist" in str(e):
+        msg = str(e)
+        if "VOLUME_NOT_FOUND" in msg or "does not exist" in msg or "TABLE_OR_VIEW_NOT_FOUND" in msg:
             return False
-        raise e
+        raise
 
 
-def create_volume(catalog: str, schema: str, volume: str, description: str) -> bool:
-    """Create a managed volume"""
-    full_name = f"{catalog}.{schema}.{volume}"
-    try:
-        spark.sql(f"""
-            CREATE VOLUME IF NOT EXISTS {full_name}
-            COMMENT '{description}'
-        """)
-        print(f"Created volume: {full_name}")
-        return True
-    except Exception as e:
-        print(f"Failed to create volume {full_name}: {e}")
-        return False
+def create_volume(catalog: str, schema: str, volume: str, description: str) -> None:
+    full = f"{catalog}.{schema}.{volume}"
+    safe_desc = description.replace("'", "''")
+    spark.sql(f"CREATE VOLUME IF NOT EXISTS {full} COMMENT '{safe_desc}'")
+    print(f"  created: {full}")
 
 
-def drop_volume(catalog: str, schema: str, volume: str) -> bool:
-    """Drop a volume"""
-    full_name = f"{catalog}.{schema}.{volume}"
-    try:
-        spark.sql(f"DROP VOLUME IF EXISTS {full_name}")
-        print(f"Dropped volume: {full_name}")
-        return True
-    except Exception as e:
-        print(f"Failed to drop volume {full_name}: {e}")
-        return False
+def drop_volume(catalog: str, schema: str, volume: str) -> None:
+    spark.sql(f"DROP VOLUME IF EXISTS {catalog}.{schema}.{volume}")
+    print(f"  dropped: {catalog}.{schema}.{volume}")
 
 
-def create_directory(path: str) -> bool:
-    """Create a directory in a volume"""
-    try:
-        dbutils.fs.mkdirs(path)
-        print(f"Created directory: {path}")
-        return True
-    except Exception as e:
-        print(f"Failed to create directory {path}: {e}")
-        return False
+def create_directory(path: str) -> None:
+    dbutils.fs.mkdirs(path)
+    print(f"    mkdir: {path}")
 
 
-def get_volume_path(catalog: str, schema: str, volume: str) -> str:
-    """Get the file system path for a volume"""
+def volume_path(catalog: str, schema: str, volume: str) -> str:
     return f"/Volumes/{catalog}/{schema}/{volume}"
 
 # COMMAND ----------
@@ -168,7 +121,6 @@ def get_volume_path(catalog: str, schema: str, volume: str) -> str:
 
 # COMMAND ----------
 
-# Set catalog
 spark.sql(f"USE CATALOG {CATALOG_NAME}")
 print(f"Using catalog: {CATALOG_NAME}")
 
@@ -180,19 +132,12 @@ print(f"Using catalog: {CATALOG_NAME}")
 # COMMAND ----------
 
 if RESET_VOLUMES:
-    print("Resetting volumes...")
-    print("-" * 50)
-    
     for schema_name, volumes in VOLUMES.items():
-        for volume_name in volumes.keys():
+        for volume_name in volumes:
             if volume_exists(CATALOG_NAME, schema_name, volume_name):
                 drop_volume(CATALOG_NAME, schema_name, volume_name)
-            else:
-                print(f"Volume '{volume_name}' doesn't exist, skipping")
-    
-    print("\n Reset complete")
 else:
-    print("Reset mode disabled - existing volumes will be preserved")
+    print("Reset mode disabled - existing volumes preserved.")
 
 # COMMAND ----------
 
@@ -201,29 +146,13 @@ else:
 
 # COMMAND ----------
 
-print(f"\nCreating volumes in catalog '{CATALOG_NAME}':")
-print("=" * 60)
-
-created_volumes = 0
-existing_volumes = 0
-failed_volumes = 0
-
 for schema_name, volumes in VOLUMES.items():
-    print(f"\n Schema: {schema_name}")
-    print("-" * 40)
-    
-    for volume_name, config in volumes.items():
+    print(f"Schema: {schema_name}")
+    for volume_name, cfg in volumes.items():
         if volume_exists(CATALOG_NAME, schema_name, volume_name):
-            print(f"⏭️ Volume '{volume_name}' already exists")
-            existing_volumes += 1
+            print(f"  exists:  {CATALOG_NAME}.{schema_name}.{volume_name}")
         else:
-            if create_volume(CATALOG_NAME, schema_name, volume_name, config["description"]):
-                created_volumes += 1
-            else:
-                failed_volumes += 1
-
-print(f"\n{'='*60}")
-print(f"Volumes: Created={created_volumes}, Existing={existing_volumes}, Failed={failed_volumes}")
+            create_volume(CATALOG_NAME, schema_name, volume_name, cfg["description"])
 
 # COMMAND ----------
 
@@ -232,150 +161,51 @@ print(f"Volumes: Created={created_volumes}, Existing={existing_volumes}, Failed=
 
 # COMMAND ----------
 
-print("\nCreating directory structure:")
-print("=" * 60)
-
 for schema_name, volumes in VOLUMES.items():
-    for volume_name, config in volumes.items():
-        volume_path = get_volume_path(CATALOG_NAME, schema_name, volume_name)
-        print(f"\n📂 {volume_path}/")
-        
-        for directory in config.get("directories", []):
-            dir_path = f"{volume_path}/{directory}"
-            create_directory(dir_path)
+    for volume_name, cfg in volumes.items():
+        base = volume_path(CATALOG_NAME, schema_name, volume_name)
+        print(f"  {base}/")
+        for directory in cfg.get("directories", []):
+            create_directory(f"{base}/{directory}")
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Step 5: Verify Setup
+# MAGIC ## Step 5: Verify
 
 # COMMAND ----------
 
-print("\n Volumes in catalog:")
-print("=" * 60)
-
-for schema_name in VOLUMES.keys():
-    print(f"\nSchema: {schema_name}")
-    try:
-        volumes_df = spark.sql(f"SHOW VOLUMES IN {CATALOG_NAME}.{schema_name}")
-        display(volumes_df)
-    except Exception as e:
-        print(f"  Error listing volumes: {e}")
+for schema_name in VOLUMES:
+    print(f"Volumes in {CATALOG_NAME}.{schema_name}:")
+    display(spark.sql(f"SHOW VOLUMES IN {CATALOG_NAME}.{schema_name}"))
 
 # COMMAND ----------
-
-# List directory contents
-print("\n Directory Structure:")
-print("=" * 60)
 
 for schema_name, volumes in VOLUMES.items():
-    for volume_name, config in volumes.items():
-        volume_path = get_volume_path(CATALOG_NAME, schema_name, volume_name)
-        print(f"\n{volume_path}/")
-        
+    for volume_name in volumes:
+        base = volume_path(CATALOG_NAME, schema_name, volume_name)
+        print(f"{base}/")
         try:
-            files = dbutils.fs.ls(volume_path)
-            for f in files:
-                print(f"  ├── {f.name}")
+            for f in dbutils.fs.ls(base):
+                print(f"  |- {f.name}")
         except Exception as e:
             print(f"  (empty or error: {e})")
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Output: Volume Paths for Other Notebooks
+# MAGIC ## Step 6: Smoke-Test Write
 
 # COMMAND ----------
 
-# Volume paths configuration
-volume_paths = {
-    # Landing zone for raw files
-    "landing": {
-        "base": f"/Volumes/{CATALOG_NAME}/raw/chi311_landing",
-        "initial": f"/Volumes/{CATALOG_NAME}/raw/chi311_landing/initial",
-        "incremental": f"/Volumes/{CATALOG_NAME}/raw/chi311_landing/incremental",
-        "archive": f"/Volumes/{CATALOG_NAME}/raw/chi311_landing/archive"
-    },
-    # Checkpoint locations
-    "checkpoint": {
-        "base": f"/Volumes/{CATALOG_NAME}/bronze/chi311_checkpoint",
-        "autoloader": f"/Volumes/{CATALOG_NAME}/bronze/chi311_checkpoint/autoloader",
-        "schema": f"/Volumes/{CATALOG_NAME}/bronze/chi311_checkpoint/schema"
-    },
-    # ML artifacts
-    "ml": {
-        "base": f"/Volumes/{CATALOG_NAME}/ml/chi311_models",
-        "prophet": f"/Volumes/{CATALOG_NAME}/ml/chi311_models/prophet",
-        "predictions": f"/Volumes/{CATALOG_NAME}/ml/chi311_models/predictions",
-        "features": f"/Volumes/{CATALOG_NAME}/ml/chi311_models/features"
-    }
-}
-
-print("Volume Paths for Other Notebooks:")
-print("=" * 60)
-print("\n# Copy these paths to your notebooks:\n")
-
-print("# Landing zone")
-print(f'LANDING_PATH = "{volume_paths["landing"]["base"]}"')
-print(f'INITIAL_PATH = "{volume_paths["landing"]["initial"]}"')
-print(f'INCREMENTAL_PATH = "{volume_paths["landing"]["incremental"]}"')
-
-print("\n# Checkpoints")
-print(f'CHECKPOINT_PATH = "{volume_paths["checkpoint"]["autoloader"]}"')
-print(f'SCHEMA_PATH = "{volume_paths["checkpoint"]["schema"]}"')
-
-print("\n# ML artifacts")
-print(f'MODELS_PATH = "{volume_paths["ml"]["prophet"]}"')
-print(f'PREDICTIONS_PATH = "{volume_paths["ml"]["predictions"]}"')
+# Verify we can actually write and read a file. This catches permission
+# issues and quota problems early rather than at first real load.
+test_path = f"{volume_path(CATALOG_NAME, 'raw', 'chi311_landing')}/.smoke_test"
+dbutils.fs.put(test_path, '{"ok": true}', overwrite=True)
+assert dbutils.fs.head(test_path).strip() == '{"ok": true}', "Smoke-test readback failed"
+dbutils.fs.rm(test_path)
+print(f"Smoke test passed: {test_path}")
 
 # COMMAND ----------
 
-# MAGIC %md
-# MAGIC ## Quick Test: Write a Sample File
-
-# COMMAND ----------
-
-# Test writing a file to the landing zone
-test_content = '{"test": "hello", "message": "Volume is working!"}'
-test_path = f"{volume_paths['landing']['base']}/test_file.json"
-
-try:
-    dbutils.fs.put(test_path, test_content, overwrite=True)
-    print(f"Successfully wrote test file: {test_path}")
-    
-    # Read it back
-    content = dbutils.fs.head(test_path)
-    print(f"Read content: {content}")
-    
-    # Clean up
-    dbutils.fs.rm(test_path)
-    print(f"Cleaned up test file")
-    
-except Exception as e:
-    print(f"Test failed: {e}")
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## Summary
-# MAGIC 
-# MAGIC Created Unity Catalog Volumes for Chicago 311 project:
-# MAGIC 
-# MAGIC | Volume | Path | Purpose |
-# MAGIC |--------|------|---------|
-# MAGIC | `chi311_landing` | `/Volumes/workspace/raw/chi311_landing` | Raw JSON files from API |
-# MAGIC | `chi311_checkpoint` | `/Volumes/workspace/bronze/chi311_checkpoint` | Autoloader state |
-# MAGIC | `chi311_models` | `/Volumes/workspace/ml/chi311_models` | ML model artifacts |
-# MAGIC 
-# MAGIC **Directory Structure**:
-# MAGIC - `landing/initial/` - Historical bulk load
-# MAGIC - `landing/incremental/` - Daily incremental files
-# MAGIC - `checkpoint/autoloader/` - Streaming checkpoint
-# MAGIC - `models/prophet/` - Prophet model exports
-# MAGIC 
-# MAGIC **Next Step**: Run `02_ingestion/01_api_to_volume.py` to fetch data from API
-
-# COMMAND ----------
-
-# Return success status
 dbutils.notebook.exit("SUCCESS")
