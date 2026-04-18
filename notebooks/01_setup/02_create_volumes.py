@@ -39,11 +39,25 @@
 
 # COMMAND ----------
 
+# Register widgets (idempotent — re-running is safe).
 dbutils.widgets.text("catalog_name", "workspace", "Catalog Name")
 dbutils.widgets.dropdown("reset_volumes", "false", ["true", "false"], "Reset Volumes (DROP ALL)")
 
-CATALOG_NAME = dbutils.widgets.get("catalog_name")
-RESET_VOLUMES = dbutils.widgets.get("reset_volumes") == "true"
+
+def get_config():
+    """Read widget values. Called from every cell that needs config so the
+    notebook is robust to out-of-order cell execution (running a single
+    cell without running predecessors is the #1 source of NameErrors in
+    Databricks notebooks)."""
+    return {
+        "catalog": dbutils.widgets.get("catalog_name"),
+        "reset_volumes": dbutils.widgets.get("reset_volumes") == "true",
+    }
+
+
+_cfg = get_config()
+CATALOG_NAME = _cfg["catalog"]
+RESET_VOLUMES = _cfg["reset_volumes"]
 
 print(f"Catalog Name:  {CATALOG_NAME}")
 print(f"Reset Volumes: {RESET_VOLUMES}")
@@ -121,6 +135,8 @@ def volume_path(catalog: str, schema: str, volume: str) -> str:
 
 # COMMAND ----------
 
+# Re-read in case this cell is run standalone.
+CATALOG_NAME = dbutils.widgets.get("catalog_name")
 spark.sql(f"USE CATALOG {CATALOG_NAME}")
 print(f"Using catalog: {CATALOG_NAME}")
 
@@ -130,6 +146,9 @@ print(f"Using catalog: {CATALOG_NAME}")
 # MAGIC ## Step 2: Reset Volumes (Optional)
 
 # COMMAND ----------
+
+CATALOG_NAME = dbutils.widgets.get("catalog_name")
+RESET_VOLUMES = dbutils.widgets.get("reset_volumes") == "true"
 
 if RESET_VOLUMES:
     for schema_name, volumes in VOLUMES.items():
@@ -146,6 +165,8 @@ else:
 
 # COMMAND ----------
 
+CATALOG_NAME = dbutils.widgets.get("catalog_name")
+
 for schema_name, volumes in VOLUMES.items():
     print(f"Schema: {schema_name}")
     for volume_name, cfg in volumes.items():
@@ -161,6 +182,8 @@ for schema_name, volumes in VOLUMES.items():
 
 # COMMAND ----------
 
+CATALOG_NAME = dbutils.widgets.get("catalog_name")
+
 for schema_name, volumes in VOLUMES.items():
     for volume_name, cfg in volumes.items():
         base = volume_path(CATALOG_NAME, schema_name, volume_name)
@@ -175,11 +198,15 @@ for schema_name, volumes in VOLUMES.items():
 
 # COMMAND ----------
 
+CATALOG_NAME = dbutils.widgets.get("catalog_name")
+
 for schema_name in VOLUMES:
     print(f"Volumes in {CATALOG_NAME}.{schema_name}:")
     display(spark.sql(f"SHOW VOLUMES IN {CATALOG_NAME}.{schema_name}"))
 
 # COMMAND ----------
+
+CATALOG_NAME = dbutils.widgets.get("catalog_name")
 
 for schema_name, volumes in VOLUMES.items():
     for volume_name in volumes:
@@ -197,6 +224,8 @@ for schema_name, volumes in VOLUMES.items():
 # MAGIC ## Step 6: Smoke-Test Write
 
 # COMMAND ----------
+
+CATALOG_NAME = dbutils.widgets.get("catalog_name")
 
 # Verify we can actually write and read a file. This catches permission
 # issues and quota problems early rather than at first real load.

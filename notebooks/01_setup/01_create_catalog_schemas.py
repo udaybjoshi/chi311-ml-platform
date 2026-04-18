@@ -40,9 +40,14 @@
 
 # COMMAND ----------
 
+# Register widgets (idempotent — re-running is safe).
 dbutils.widgets.text("catalog_name", "workspace", "Catalog Name")
 dbutils.widgets.dropdown("reset_schemas", "false", ["true", "false"], "Reset Schemas (DROP ALL)")
 
+# Each cell below that uses CATALOG_NAME / RESET_SCHEMAS re-reads from the
+# widget. This makes every cell self-contained and avoids NameErrors when
+# cells are executed out of order (the #1 source of confusion in Databricks
+# notebooks).
 CATALOG_NAME = dbutils.widgets.get("catalog_name")
 RESET_SCHEMAS = dbutils.widgets.get("reset_schemas") == "true"
 
@@ -110,6 +115,8 @@ def drop_schema(catalog_name: str, schema_name: str) -> None:
 
 # COMMAND ----------
 
+CATALOG_NAME = dbutils.widgets.get("catalog_name")
+
 if not catalog_exists(CATALOG_NAME):
     dbutils.notebook.exit(
         f"FAILED: catalog '{CATALOG_NAME}' does not exist. "
@@ -125,6 +132,9 @@ print(f"Using catalog: {CATALOG_NAME}")
 # MAGIC ## Step 2: Reset Schemas (Optional)
 
 # COMMAND ----------
+
+CATALOG_NAME = dbutils.widgets.get("catalog_name")
+RESET_SCHEMAS = dbutils.widgets.get("reset_schemas") == "true"
 
 if RESET_SCHEMAS:
     print("Resetting schemas (CASCADE):")
@@ -142,6 +152,8 @@ else:
 # MAGIC ## Step 3: Create Schemas
 
 # COMMAND ----------
+
+CATALOG_NAME = dbutils.widgets.get("catalog_name")
 
 created, existing = 0, 0
 for schema_name, description in SCHEMAS.items():
@@ -161,6 +173,8 @@ print(f"\nSummary: created={created}, existing={existing}")
 
 # COMMAND ----------
 
+CATALOG_NAME = dbutils.widgets.get("catalog_name")
+
 display(spark.sql(f"SHOW SCHEMAS IN {CATALOG_NAME}"))
 
 for schema_name in SCHEMAS:
@@ -173,6 +187,8 @@ for schema_name in SCHEMAS:
 # MAGIC ## Output: Configuration for Other Notebooks
 
 # COMMAND ----------
+
+CATALOG_NAME = dbutils.widgets.get("catalog_name")
 
 config = {
     "catalog": CATALOG_NAME,
