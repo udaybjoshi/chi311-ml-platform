@@ -111,18 +111,11 @@ resources:
               load_type: "{{job.parameters.load_type}}"
               days_back: "{{job.parameters.days_back}}"
 
-        - task_key: autoloader_to_bronze
-          depends_on:
-            - task_key: api_to_volume
-          notebook_task:
-            notebook_path: ./notebooks/02_ingestion/02_bronze_autoloader.py
-            base_parameters:
-              catalog_name: "{{job.parameters.catalog_name}}"
-              source_path: all
-
+        # DLT pipeline reads the landing Volume directly via STREAM
+        # read_files(...), so no separate Autoloader task is needed.
         - task_key: dlt_silver_gold
           depends_on:
-            - task_key: autoloader_to_bronze
+            - task_key: api_to_volume
           pipeline_task:
             pipeline_id: ${resources.pipelines.chi311_scd2.id}
             full_refresh: false

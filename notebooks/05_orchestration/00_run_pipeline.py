@@ -46,25 +46,27 @@ print(f"Stage 1 (API -> Volume): {result}")
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Stage 2: Autoloader -> Bronze Delta
-
-# COMMAND ----------
-
-result = dbutils.notebook.run(
-    "../02_ingestion/02_bronze_autoloader",
-    timeout_seconds=60 * 30,
-    arguments={**common_args, "source_path": "all"},
-)
-print(f"Stage 2 (Autoloader -> Bronze): {result}")
+# MAGIC ## Stage 2: DLT Pipeline (Bronze + Silver + Gold)
+# MAGIC
+# MAGIC The DLT pipeline reads the landing Volume directly via
+# MAGIC `STREAM read_files(...)` and materialises bronze -> silver (SCD2) ->
+# MAGIC gold in a single triggered run. Start it here manually, or rely on
+# MAGIC the serverless Job defined in `databricks.yml` which wires the
+# MAGIC pipeline task in automatically.
+# MAGIC
+# MAGIC Interactive one-liner (Free Edition, Databricks CLI authenticated):
+# MAGIC ```bash
+# MAGIC databricks pipelines start-update <pipeline-id>
+# MAGIC ```
+# MAGIC Or click **Start** in Workflows -> Pipelines -> chi311_scd2.
 
 # COMMAND ----------
 
 # MAGIC %md
 # MAGIC ## Stage 3: Data Quality Gate
 # MAGIC
-# MAGIC Assumes the DLT pipeline has already produced the Silver + Gold
-# MAGIC tables (run it from the Workflows UI between stages 2 and 3, or
-# MAGIC rely on the Job task defined in `databricks.yml`).
+# MAGIC Requires the DLT pipeline (Stage 2) to have produced the Silver
+# MAGIC tables at least once.
 
 # COMMAND ----------
 

@@ -1,9 +1,18 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # 02 - Bronze Layer Autoloader
+# MAGIC # 02 - Bronze Layer Autoloader (DEPRECATED)
 # MAGIC
-# MAGIC **Purpose**: Incrementally ingest JSON files from the landing Volume
-# MAGIC into the Bronze Delta table.
+# MAGIC **Status**: Superseded by the DLT pipeline in
+# MAGIC `pipelines/chi311_scd2_pipeline.sql`, which reads the landing Volume
+# MAGIC directly via `STREAM read_files(...)`. Two concurrent writers to the
+# MAGIC same Bronze Delta table conflict, so only one should be active.
+# MAGIC
+# MAGIC Kept here as a fallback for environments where DLT is unavailable
+# MAGIC (notably, if a future workspace strips Lakeflow Declarative Pipelines
+# MAGIC from the Free tier) or for local debugging without a DLT run.
+# MAGIC
+# MAGIC **Purpose (historical)**: Incrementally ingest JSON files from the
+# MAGIC landing Volume into the Bronze Delta table.
 # MAGIC
 # MAGIC **Pattern**: Volume (JSON) -> Autoloader (Structured Streaming with
 # MAGIC `cloudFiles`) -> Bronze (Delta).
