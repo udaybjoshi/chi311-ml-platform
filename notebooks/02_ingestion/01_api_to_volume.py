@@ -116,8 +116,21 @@ def get_file_count(path: str) -> int:
 # MAGIC
 # MAGIC Fetches historical data and saves in chunks (50K records per file).
 # MAGIC This avoids the 128MB file size limit in Databricks.
+# MAGIC
+# MAGIC **Gated on `load_type == "initial"`** — if the widget is set to
+# MAGIC `incremental` this cell is a no-op (silent, <1s). Change the
+# MAGIC dropdown at the top of the notebook before running.
 
 # COMMAND ----------
+
+# Re-read in case the widget was changed after the Widget Parameters cell ran.
+CATALOG = dbutils.widgets.get("catalog_name")
+load_type = dbutils.widgets.get("load_type")
+years_back = int(dbutils.widgets.get("years_back"))
+INITIAL_PATH = f"/Volumes/{CATALOG}/raw/chi311_landing/initial"
+
+if load_type != "initial":
+    print(f"Skipping initial load: load_type={load_type!r}. Set the Load Type widget to 'initial' to run.")
 
 if load_type == "initial":
     # Calculate date range
@@ -182,6 +195,15 @@ if load_type == "initial":
 # MAGIC Uses `last_modified_date` to catch both new and updated records.
 
 # COMMAND ----------
+
+# Re-read in case the widget was changed after the Widget Parameters cell ran.
+CATALOG = dbutils.widgets.get("catalog_name")
+load_type = dbutils.widgets.get("load_type")
+days_back = int(dbutils.widgets.get("days_back"))
+INCREMENTAL_PATH = f"/Volumes/{CATALOG}/raw/chi311_landing/incremental"
+
+if load_type != "incremental":
+    print(f"Skipping incremental load: load_type={load_type!r}. Set the Load Type widget to 'incremental' to run.")
 
 if load_type == "incremental":
     # Calculate date range
